@@ -1,0 +1,10 @@
+
+    byte                            non-headers
+    stream          frame           frame
+       ---> [frame ] ---> [headers] -------> [frame ] ...
+  ^         [desil.]      [hook   ]          [switch]
+  |                         |    \  full headers
+  +-------------------------+     \ frame
+         continuation              `-------> [stream ] ...
+                                             [creator]
+
