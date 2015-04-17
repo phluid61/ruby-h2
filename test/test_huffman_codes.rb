@@ -5,7 +5,7 @@ require 'test/unit'
 require_relative 'helpers'
 $VERBOSE = true
 
-require_relative '../lib/hpack/huffman-codes'
+require_relative '../lib/ruby-h2/hpack/huffman-codes'
 class Test_huffman_codes < Test::Unit::TestCase
 	include TestHelpers
 

@@ -5,7 +5,7 @@ require 'test/unit'
 require_relative 'helpers'
 $VERBOSE = true
 
-require_relative '../lib/hpack/encoding'
+require_relative '../lib/ruby-h2/hpack/encoding'
 class Test_encoding < Test::Unit::TestCase
 	include TestHelpers
 
