@@ -33,8 +33,8 @@ class FrameDeserialiser
 			emit Frame.new(type, flags, sid, payload)
 
 			bytes = rest[len..-1]
-
 		end
+
 		@buffer = nil
 	end
 
