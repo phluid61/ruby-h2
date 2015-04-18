@@ -1,4 +1,4 @@
-#vim: ts=2:sts=2:sw=2
+# vim: ts=2:sts=2:sw=2
 
 module FrameTypes
 	DATA          = 0x0
