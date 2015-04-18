@@ -26,7 +26,7 @@ class HeadersHook
 	end
 
 	# call this with every arriving frame
-	def intercept frame
+	def << frame
 		if @headers_sid
 			intercept_continuation
 		else

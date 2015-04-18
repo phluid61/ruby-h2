@@ -10,10 +10,17 @@ class FrameDeserialiser
 	def initialize &callback
 		@max_frame_size = 16384
 		@buffer = nil
-		@callback = callback
+		@callbacks = []
+		@callbacks << callback if callback
 	end
 	attr_accessor :max_frame_size
 
+	# block gets called whenever a frame arrives
+	def on_frame &handler
+		@callbacks << &handler
+	end
+
+	# accepts bytes, triggers on_frame callbacks
 	def << bytes
 		bytes = @buffer + bytes if @buffer
 
@@ -39,7 +46,13 @@ class FrameDeserialiser
 	end
 
 	def emit f
-		@callback.call f if @callback
+		@callbacks.each do |h|
+			begin
+				h.call f
+			rescue Exception => e
+				# FIXME
+			end
+		end
 	end
 	private :emit
 
