@@ -17,7 +17,7 @@ class HeadersHook
 
 	# block gets called whenever a frame arrives
 	def on_frame &handler
-		@frame_handlers << &handler
+		@frame_handlers << handler
 	end
 
 	# block gets called whenever a new stream is opened

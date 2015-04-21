@@ -17,7 +17,7 @@ class FrameDeserialiser
 
 	# block gets called whenever a frame arrives
 	def on_frame &handler
-		@callbacks << &handler
+		@callbacks << handler
 	end
 
 	# accepts bytes, triggers on_frame callbacks
