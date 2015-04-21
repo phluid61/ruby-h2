@@ -67,7 +67,7 @@ class HeadersHook
 
 	# :nodoc:
 	def maybe_continue frame
-		if frame.flags & FLAG_END_HEADERS
+		if frame.flags & FLAG_END_HEADERS == FLAG_END_HEADERS
 			@stream_handlers.each do |h|
 				begin
 				h.call @headers_sid, @headers_block.dup
