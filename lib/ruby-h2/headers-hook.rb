@@ -28,9 +28,9 @@ class HeadersHook
 	# call this with every arriving frame
 	def << frame
 		if @headers_sid
-			intercept_continuation
+			intercept_continuation frame
 		else
-			intercept_header
+			intercept_header frame
 		end
 	end
 
@@ -60,6 +60,7 @@ class HeadersHook
 						h.call frame
 					rescue Exception => x
 						# FIXME
+						STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}
 					end
 				end
 			end
@@ -73,6 +74,7 @@ class HeadersHook
 				h.call @headers_sid, @headers_block.dup
 				rescue Exception => x
 					# FIXME
+					STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}
 				end
 			end
 			@headers_sid = nil

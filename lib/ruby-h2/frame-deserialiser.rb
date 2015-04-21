@@ -22,6 +22,7 @@ class FrameDeserialiser
 
 	# accepts bytes, triggers on_frame callbacks
 	def << bytes
+
 		bytes = @buffer + bytes if @buffer
 
 		until bytes.empty?
@@ -49,8 +50,9 @@ class FrameDeserialiser
 		@callbacks.each do |h|
 			begin
 				h.call f
-			rescue Exception => e
+			rescue Exception => x
 				# FIXME
+				STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}
 			end
 		end
 	end
