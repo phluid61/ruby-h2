@@ -29,6 +29,7 @@ class FrameSerialiser
 
 		bytes = [len0,len1, frame.type, frame.flags, frame.sid, frame.payload].pack HEADER_FORMAT
 		emit bytes
+		self
 	end
 
 	def emit b

@@ -3,7 +3,8 @@
 require_relative 'frame'
 
 class FrameDeserialiser
-	HEADER_FORMAT = 'CnCCNA*'
+	HEADER_FORMAT = 'CnCCN'
+	HEADER_LENGTH = 9
 	R_MASK = 0x8000_0000
 
 	def initialize &callback
@@ -21,11 +22,17 @@ class FrameDeserialiser
 
 	# accepts bytes, triggers on_frame callbacks
 	def << bytes
-
 		bytes = @buffer + bytes if @buffer
+		bytes.force_encoding Encoding::BINARY
 
 		until bytes.empty?
-			len0,len1, type, flags, sid, rest = bytes.unpack HEADER_FORMAT
+			if bytes.bytesize < HEADER_LENGTH
+				@buffer = bytes
+				return self
+			end
+
+			len0,len1, type, flags, sid = bytes.unpack HEADER_FORMAT
+			rest = bytes[HEADER_LENGTH..-1]
 			len = (len0 << 16) | len1
 
 			raise "too long (#{len} > #{@max_frame_size}" if len > @max_frame_size
@@ -33,7 +40,7 @@ class FrameDeserialiser
 
 			if rest.bytesize < len
 				@buffer = bytes
-				return
+				return self
 			end
 
 			payload = rest[0...len]
@@ -43,6 +50,7 @@ class FrameDeserialiser
 		end
 
 		@buffer = nil
+		self
 	end
 
 	def emit f

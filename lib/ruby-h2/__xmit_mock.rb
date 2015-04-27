@@ -54,6 +54,20 @@ def send f
 	$sil << f
 end
 
+puts "One frame with no payload:"
+try { desil << "\x00\x00\x00\x00\x00\x00\x00\x00\x00" }
+puts "One frame with payload:"
+try { desil << "\x00\x00\x0b\x00\x00\x00\x00\x00\x00Hello world" }
+puts "One frame split in header:"
+try { desil << "\x00\x00\x00\x00\x00" << "\x00\x00\x00\x00" }
+puts "One frame split in payload:"
+try { desil << "\x00\x00\x0b\x00\x00\x00\x00\x00\x00Hello " << "world" }
+puts "Two whole frames:"
+try { desil << "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x02" }
+puts "Three split frames:"
+try { desil << "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00" << "\x00\x00\x00\x00\x00\x00\x02\x00\x00\x02\x00\x00\x00\x00\x00\x03a" << 'a' }
+
+puts "Testing round-trips:"
 try { send Frame.new(DATA,0,0,'') }
 try { send Frame.new(DATA,0,1,'Hello') }
 #try { send Frame.new(DATA,0,-1) }
