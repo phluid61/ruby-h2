@@ -40,7 +40,7 @@ class HeadersHook
 			@headers_block << frame.payload
 			maybe_continue frame
 		else
-			raise
+			raise 'not CONTINUATION frame'
 		end
 	end
 
@@ -50,10 +50,10 @@ class HeadersHook
 			when HEADERS
 				@headers_sid = frame.sid
 				# TODO: extract padding,priority,...
-				@headers_block = frame.payload
+				@headers_block = frame.payload.dup
 				maybe_continue frame
 			when CONTINUATION
-				raise # FIXME
+				raise 'unexpected CONTINUATION frame' # FIXME
 			else
 				@frame_handlers.each do |h|
 					begin
@@ -71,7 +71,7 @@ class HeadersHook
 		if frame.flags & FLAG_END_HEADERS == FLAG_END_HEADERS
 			@stream_handlers.each do |h|
 				begin
-				h.call @headers_sid, @headers_block.dup
+					h.call @headers_sid, @headers_block.dup
 				rescue Exception => x
 					# FIXME
 					STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}

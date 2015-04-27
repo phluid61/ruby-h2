@@ -4,7 +4,6 @@ require_relative 'frame'
 
 class FrameDeserialiser
 	HEADER_FORMAT = 'CnCCNA*'
-	HEADER_LENGTH = 9
 	R_MASK = 0x8000_0000
 
 	def initialize &callback
