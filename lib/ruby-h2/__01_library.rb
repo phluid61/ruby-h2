@@ -1,0 +1,45 @@
+
+require_relative '__02_httpclient'
+
+_get = {}
+def get path, &b
+	_get[path] = b
+end
+
+hclient = HTTPClient.new
+hclient.on_request do |r|
+	q = HTTPResponse.new
+	case r.method.downcase
+	when 'get', 'head'
+		callback = _get[r.path]
+		if callback
+			q.status = 200
+			q['content-type'] = 'text/html'
+			q << callback.call(r, q)
+		else
+			q.status = 404
+			q['content-type'] = 'text/html'
+			q << <<<HTML
+<!DOCTYPE html>
+<html lang="en"><head><title>Not Found</title></head><body><h1>Not Found</h1><p>Resource <tt>#{r.path}</tt> not found.</p></body></html>
+HTML
+		end
+	else
+			q.status = 405
+			q['content-type'] = 'text/html'
+			q << <<<HTML
+<!DOCTYPE html>
+<html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
+HTML
+	end
+	hclient.deliver r
+end
+
+at_exit do
+	require 'socket'
+	server = TCPServer.new 8088
+	loop do
+		hclient.wrap server.accept
+	end
+end
+
