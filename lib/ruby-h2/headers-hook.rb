@@ -12,6 +12,7 @@ class HeadersHook
 		@stream_handlers = []
 
 		@headers_sid = nil
+		@headers_flags = nil
 		@headers_block = nil
 	end
 
@@ -49,6 +50,7 @@ class HeadersHook
 			case frame.type
 			when HEADERS
 				@headers_sid = frame.sid
+				@headers_flags = frame.flags
 				# TODO: extract padding,priority,...
 				@headers_block = frame.payload.dup
 				maybe_continue frame
@@ -71,7 +73,7 @@ class HeadersHook
 		if frame.flags & FLAG_END_HEADERS == FLAG_END_HEADERS
 			@stream_handlers.each do |h|
 				begin
-					h.call @headers_sid, @headers_block.dup
+					h.call @headers_sid, @headers_flags, @headers_block.dup
 				rescue Exception => x
 					# FIXME
 					STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}

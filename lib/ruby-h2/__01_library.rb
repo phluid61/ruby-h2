@@ -1,5 +1,8 @@
+# vim: ts=2 sts=2 sw=2
 
 require_relative '__02_httpclient'
+
+$port = 8000
 
 _get = {}
 def get path, &b
@@ -9,8 +12,8 @@ end
 hclient = HTTPClient.new
 hclient.on_request do |r|
 	q = HTTPResponse.new
-	case r.method.downcase
-	when 'get', 'head'
+	case r.method.upcase
+	when 'GET', 'HEAD'
 		callback = _get[r.path]
 		if callback
 			q.status = 200
@@ -37,7 +40,7 @@ end
 
 at_exit do
 	require 'socket'
-	server = TCPServer.new 8088
+	server = TCPServer.new $port
 	loop do
 		hclient.wrap server.accept
 	end
