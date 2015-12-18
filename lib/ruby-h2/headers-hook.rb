@@ -9,11 +9,7 @@ class HeadersHook
 
 	def initialize
 		@frame_handlers = []
-		@stream_handlers = []
-
-		@headers_sid = nil
-		@headers_flags = nil
-		@headers_block = nil
+		@headers = nil
 	end
 
 	# block gets called whenever a frame arrives
@@ -21,14 +17,9 @@ class HeadersHook
 		@frame_handlers << handler
 	end
 
-	# block gets called whenever a new stream is opened
-	def on_stream &handler
-		@stream_handlers << handler
-	end
-
 	# call this with every arriving frame
 	def << frame
-		if @headers_sid
+		if @headers
 			intercept_continuation frame
 		else
 			intercept_header frame
@@ -38,7 +29,7 @@ class HeadersHook
 	# :nodoc:
 	def intercept_continuation frame
 		if frame.type == CONTINUATION
-			@headers_block << frame.payload
+			@headers << frame.payload
 			maybe_continue frame
 		else
 			raise 'not CONTINUATION frame'
@@ -49,37 +40,33 @@ class HeadersHook
 	def intercept_header frame
 			case frame.type
 			when HEADERS
-				@headers_sid = frame.sid
-				@headers_flags = frame.flags
+				@headers = frame
 				# TODO: extract padding,priority,...
-				@headers_block = frame.payload.dup
 				maybe_continue frame
 			when CONTINUATION
 				raise 'unexpected CONTINUATION frame' # FIXME
 			else
-				@frame_handlers.each do |h|
-					begin
-						h.call frame
-					rescue Exception => x
-						# FIXME
-						STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}
-					end
-				end
+				emit_frame frame
 			end
 	end
 
 	# :nodoc:
 	def maybe_continue frame
-		if frame.flags & FLAG_END_HEADERS == FLAG_END_HEADERS
-			@stream_handlers.each do |h|
-				begin
-					h.call @headers_sid, @headers_flags, @headers_block.dup
-				rescue Exception => x
-					# FIXME
-					STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}
-				end
+		if frame.flag? FLAG_END_HEADERS
+			emit_frame @headers
+			@headers = nil
+		end
+	end
+
+	# :nodoc:
+	def emit_frame frame
+		@frame_handlers.each do |h|
+			begin
+				h.call frame
+			rescue Exception => x
+				# FIXME
+				STDERR.puts x, *x.backtrace.map{|bt|"\t#{bt}"}
 			end
-			@headers_sid = nil
 		end
 	end
 end

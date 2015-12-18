@@ -15,5 +15,14 @@ class Frame
 	def inspect
 		"\#<Frame:#{'%02X'%type}[#{'%02X'%flags}]:#{sid} #{payload.inspect}>"
 	end
+
+	def flag? bit
+		@flags & bit == bit
+	end
+
+	# only used when concatenating HEADERS+CONTINUATION
+	def << bytes
+		@payload = (@payload + bytes).freeze
+	end
 end
 

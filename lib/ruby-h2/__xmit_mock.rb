@@ -42,9 +42,9 @@ end
 headers_hook.on_frame do |f|
 	$logger.info "received frame #{f.inspect}"
 end
-headers_hook.on_stream do |sid, block|
-	$logger.info "new stream #{sid}\n#{block.inspect}"
-end
+#headers_hook.on_stream do |sid, block|
+#	$logger.info "new stream #{sid}\n#{block.inspect}"
+#end
 $sil.on_frame do |b|
 	$logger.info "sending bytes #{b.dump_frame}"
 	desil << b
