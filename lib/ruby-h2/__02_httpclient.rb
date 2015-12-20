@@ -38,10 +38,38 @@ class HTTPClient
 	#   http_client.wrap server.accept
 	#
 	def wrap s
+		@sil = FrameSerialiser.new {|b| s.write b } # FIXME: partial write?
 		dsil = FrameDeserialiser.new
 		dsil.on_frame {|f| @hook << f }
 		loop do
 			dsil << s.read
+		end
+	end
+
+	##
+	# deliver HTTPResponse
+	def deliver r
+		# create headers
+		#h = HeaderThingy.new
+		#h << [':status', r.status]
+		r.headers.each_pair do |k,v|
+			#h << [k,v]
+		end
+		#-- Frame.new FrameTypes::HEADERS, 0, r.stream, ''
+		# FIXME: needs to know max_frame_size to split into continuations
+		#h.each_frame(r.stream) {|f| _send_frame f }
+		# create data
+		if !r.body.empty?
+			f = Frame.new FrameTypes::DATA, 0, r.stream, r.body
+			_send_frame f
+		end
+	end
+
+	def _send_frame f
+		if f.type == FrameTypes::DATA
+			# go through the window
+		else
+			@sil << f
 		end
 	end
 
@@ -104,7 +132,7 @@ class HTTPClient
 			# TODO:
 			#parse settings
 			#foreach k=>v
-			# apply k, v
+			#	apply k, v
 			#end
 			#send ACK
 		end
@@ -146,13 +174,15 @@ class HTTPClient
 end
 
 class HTTPRequest
-	def initialize method, path, version, headers, body
+	def initialize stream, method, path, version, headers, body
+		@stream  = stream
 		@method  = method
 		@path    = path
 		@version = version
 		@headers = headers
 		@body    = body
 	end
+	attr_reader :stream
 	attr_reader :method
 	attr_reader :path
 	attr_reader :version
@@ -161,11 +191,14 @@ class HTTPRequest
 end
 
 class HTTPResponse
-	def initialize status=nil
+	def initialize stream, status=nil
+		@stream  = stream
 		@status  = status
 		@headers = {}
 		@body    = String.new
 	end
+
+	attr_reader :stream
 
 	attr_accessor :status
 

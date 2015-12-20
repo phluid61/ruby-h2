@@ -9,9 +9,8 @@ def get path, &b
 	_get[path] = b
 end
 
-hclient = HTTPClient.new
-hclient.on_request do |r|
-	q = HTTPResponse.new
+def request_handler r, c
+	q = HTTPResponse.new r.stream
 	case r.method.upcase
 	when 'GET', 'HEAD'
 		callback = _get[r.path]
@@ -35,13 +34,16 @@ HTML
 <html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
 HTML
 	end
-	hclient.deliver r
+	c.deliver r
 end
 
 at_exit do
 	require 'socket'
 	server = TCPServer.new $port
 	loop do
+		# FIXME: GC?
+		hclient = HTTPClient.new
+		hclient.on_request {|r| request_handler r, hclient }
 		hclient.wrap server.accept
 	end
 end
