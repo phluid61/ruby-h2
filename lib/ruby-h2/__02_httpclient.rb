@@ -5,9 +5,12 @@ require_relative 'frame-types'
 require_relative 'headers-hook'
 require_relative 'hpack'
 
+require_relative '__03_objects'
+
 class HTTPClient
-	FLAG_END_STREAM = 0x1
-	FLAG_ACK        = 0x1
+	FLAG_END_STREAM  = 0x1
+	FLAG_ACK         = 0x1
+	FLAG_END_HEADERS = 0x4
 
 	def initialize
 		# machinery state
@@ -50,14 +53,10 @@ class HTTPClient
 	# deliver HTTPResponse
 	def deliver r
 		# create headers
-		#h = HeaderThingy.new
-		#h << [':status', r.status]
-		r.headers.each_pair do |k,v|
-			#h << [k,v]
-		end
-		#-- Frame.new FrameTypes::HEADERS, 0, r.stream, ''
-		# FIXME: needs to know max_frame_size to split into continuations
-		#h.each_frame(r.stream) {|f| _send_frame f }
+		hblock = @hpack.create_block headers
+		# TODO: split into chunks
+		f = Frame.new FrameTypes::HEADERS, FLAG_END_HEADERS, r.stream, hblock
+		_send_frame f
 		# create data
 		if !r.body.empty?
 			f = Frame.new FrameTypes::DATA, 0, r.stream, r.body
@@ -170,50 +169,6 @@ class HTTPClient
 	def _emit_request h
 		# FIXME
 		@request_proc.call HTTPRequest.new( h[:headers][':method'], h[:header][':path'], 'HTTP/2', h[:headers], h[:body] )
-	end
-end
-
-class HTTPRequest
-	def initialize stream, method, path, version, headers, body
-		@stream  = stream
-		@method  = method
-		@path    = path
-		@version = version
-		@headers = headers
-		@body    = body
-	end
-	attr_reader :stream
-	attr_reader :method
-	attr_reader :path
-	attr_reader :version
-	attr_reader :headers
-	attr_reader :body
-end
-
-class HTTPResponse
-	def initialize stream, status=nil
-		@stream  = stream
-		@status  = status
-		@headers = {}
-		@body    = String.new
-	end
-
-	attr_reader :stream
-
-	attr_accessor :status
-
-	attr_reader :headers
-	def []= h, v
-		@headers[h] = v
-	end
-
-	def [] h
-		@headers[h]
-	end
-
-	attr_reader :body
-	def << s
-		@body << s
 	end
 end
 

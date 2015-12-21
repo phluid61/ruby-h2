@@ -47,6 +47,19 @@ class ::RUBYH2_Table
 		@dtable.inject(0){|s,e| s + e.size }
 	end
 
+	def find n, v
+		@names.each_with_index do |e,i|
+			return i if e.name == n && e.value == v
+		end
+		nil
+	end
+	def find_name n
+		@names.each_with_index do |e,i|
+			return i if e.name == n
+		end
+		nil
+	end
+
 	def _evict_until s
 		if s < 1
 			@dtable = []
@@ -171,6 +184,33 @@ class ::RUBYH2_HPack
 				yield name, value
 			end
 		end
+	end
+
+	def create_block headers
+		bytes = String.new
+		headers.each do |k,v|
+			i = @table_out.find k, v
+			if i
+				# generate indexed thing
+				chunk = ::RUBYH2_HPackEncoding.encode_int i, prefix_bits: 7, prefix: 0x80
+				# TODO: @table_out.add name, value ???
+			else
+				i = @table_out.find_name k
+				if i
+					# generate a half-indexed thing
+					chunk = ::RUBYH2_HPackEncoding.encode_int i, prefix_bits: 6, prefix: 0x40
+					chunk = ::RUBYH2_HPackEncoding.encode_string value
+					# TODO: @table_out.add name, value ???
+				else
+					# generate a literal thing
+					chunk = ::RUBYH2_HPackEncoding.encode_int 0, prefix_bits: 6, prefix: 0x40
+					chunk = ::RUBYH2_HPackEncoding.encode_string name
+					chunk = ::RUBYH2_HPackEncoding.encode_string value
+					# TODO: @table_out.add name, value ???
+				end
+			end
+		end
+		bytes
 	end
 
 end
