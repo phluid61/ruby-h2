@@ -2,6 +2,7 @@
 # vim: ts=2 sts=2 sw=2
 
 require_relative 'frame-deserialiser'
+require_relative 'frame-serialiser'
 require_relative 'frame-types'
 require_relative 'headers-hook'
 require_relative 'hpack'
@@ -9,6 +10,8 @@ require_relative 'hpack'
 require_relative '__03_objects'
 
 module RUBYH2
+
+	PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
 	class HTTPClient
 		FLAG_END_STREAM  = 0x1
@@ -49,9 +52,27 @@ module RUBYH2
 			@sil = RUBYH2::FrameSerialiser.new {|b| s.write b } # FIXME: partial write?
 			dsil = RUBYH2::FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
+			_handle_prefixes s
+			_send_frame RUBYH2::Frame.new(FrameTypes::SETTINGS, 0, 0, [0x0,0x4,0x7f,0xff,0xff,0xff].pack('C*'))
+			# FIXME: ensure that first frame is a SETTINGS
 			loop do
 				dsil << s.read
 			end
+		end
+
+		def _handle_prefixes s
+			t0 = Thread.new do
+				preface = String.new.b
+				while preface.length < 24
+					preface << s.read(24 - preface.length)
+				end
+				raise 'connection:PROTOCOL_ERROR' if preface != PREFACE
+			end
+			t1 = Thread.new do
+				s.write PREFACE
+			end
+			t0.join
+			t1.join
 		end
 
 		##
@@ -190,8 +211,8 @@ module RUBYH2
 		end
 
 		def handle_ping f
-			raise 'connection.PROTOCOL_ERROR' unless f.sid == 0
-			raise 'connection.FRAME_SIZE_ERROR' unless f.payload.bytesize == 8
+			raise 'connection:PROTOCOL_ERROR' unless f.sid == 0
+			raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 8
 			# TODO:
 			if f.flag? FLAG_ACK
 				#verify_pong f.payload
