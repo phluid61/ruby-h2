@@ -19,7 +19,7 @@ class HTTPClient
 		@hook = HeadersHook.new
 		@hook.on_frame {|f| _recv_frame f }
 		@hpack = ::RUBYH2_HPack.new
-		@window_queue = []
+		@window_queue = {}
 		# H2 state
 		@streams = {}
 		@default_window_size = 65535
@@ -88,24 +88,37 @@ class HTTPClient
 		end
 	end
 
-	def _send_frame f
-		if f.type == FrameTypes::DATA
-			# go through the window
-			_through_window f
-		else
-			@sil << f
-		end
+	# returns truthy if the given frame carries HTTP semantics
+	# (so has to be sent in order)
+	def _semantic_frame? f
+		f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION
 	end
 
-	# Try to send a frame (e.g. DATA) through the window.
-	# Queues it if the window is too small.
-	def _through_window f
-		# TODO: also check @frames[f.sid][:window_size]
-		if @window_size >= f.payload_size
-			@window_size -= f.payload_size
+	def _send_frame f
+		if !_semantic_frame? f
+			@sil << f
+		elsif f.sid == 0
+			# FIXME: assumes .type != DATA, etc.
 			@sil << f
 		else
-			@window_queue << f
+			s = @streams[f.sid]
+			raise unless s #???
+			q = @window_queue[f.sid]
+			if q && !q.empty?
+				q << f
+			elsif f.type == FrameTypes::DATA
+				b = f.payload_size
+				if @window_size >= b && s[:window_size] >= b
+					@window_size -= b
+					s[:window_size] -= b
+					@sil << f
+				else
+					@window_queue[f.sid] ||= []
+					@window_queue[f.sid] << f
+				end
+			else
+				@sil << f
+			end
 		end
 	end
 
@@ -194,23 +207,33 @@ class HTTPClient
 
 		raise 'stream:PROTOCOL_ERROR' if increment == 0
 
-		if f.sid
+		if f.sid != 0
 			@streams[f.sid][:window_size] += increment
 		else
 			@window_size += increment
 		end
 
-		until @window_queue.empty?
-			f = @window_queue.first
-			# TODO: also check @frames[f.sid][:window_size]
-			if @window_size <= f.payload_size
-				#TODO: LOCK {
-				@window_queue.shift
-				@window_size -= f.payload_size
-				#}
-				@sil << f
-			else
-				break
+		catch :CONNECTION_EXHAUSTED do
+			@window_queue.each_pair do |sid, queue|
+				s = @streams[sid]
+				# note: sid can never be zero, since frames only
+				#       enter the queue because of a blocked DATA
+				#       (which isn't allowed on stream 0)
+				raise unless s # FIXME
+				catch :STREAM_EXHAUSED do
+					until queue.empty?
+						f = queue.first
+						b = (f.type == FrameTypes::DATA ? f.payload_size : 0)
+						throw :CONNECTION_EXHAUSED if @window_size < b
+						throw :STREAM_EXHAUSTED if s[:window_size] < b
+						#TODO: LOCK {
+							queue.shift
+							@window_size -= b
+							s[:window_size] -= b
+						#}
+						@sil << f
+					end
+				end
 			end
 		end
 	end
