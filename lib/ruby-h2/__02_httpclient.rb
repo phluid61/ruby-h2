@@ -5,6 +5,7 @@ require_relative 'frame-deserialiser'
 require_relative 'frame-serialiser'
 require_relative 'frame-types'
 require_relative 'headers-hook'
+require_relative 'settings'
 require_relative 'hpack'
 
 require_relative '__03_objects'
@@ -53,7 +54,7 @@ module RUBYH2
 			dsil = RUBYH2::FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			_handle_prefixes s
-			_send_frame RUBYH2::Frame.new(FrameTypes::SETTINGS, 0, 0, [0x0,0x4,0x7f,0xff,0xff,0xff].pack('C*'))
+			_send_frame RUBYH2::Settings.frame_from({0x4 => 2_147_483_647})
 			# FIXME: ensure that first frame is a SETTINGS
 			loop do
 				dsil << s.read
