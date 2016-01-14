@@ -1,3 +1,4 @@
+# encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
 class HTTPRequest
@@ -22,7 +23,7 @@ class HTTPResponse
 		@stream  = stream
 		@status  = status
 		@headers = {}
-		@body    = String.new
+		@body    = String.new.b
 	end
 
 	attr_reader :stream
@@ -40,7 +41,7 @@ class HTTPResponse
 
 	attr_reader :body
 	def << s
-		@body << s
+		@body << s if s
 	end
 end
 

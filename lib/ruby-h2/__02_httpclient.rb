@@ -1,3 +1,4 @@
+# encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
 require_relative 'frame-deserialiser'
@@ -18,10 +19,12 @@ class HTTPClient
 		@hook = HeadersHook.new
 		@hook.on_frame {|f| _recv_frame f }
 		@hpack = ::RUBYH2_HPack.new
+		@window_queue = []
 		# H2 state
 		@streams = {}
 		@default_window_size = 65535
 		@window_size = @default_window_size
+		@max_frame_size = 16384
 	end
 
 	##
@@ -52,23 +55,57 @@ class HTTPClient
 	##
 	# deliver HTTPResponse
 	def deliver r
+
 		# create headers
 		hblock = @hpack.create_block headers
-		# TODO: split into chunks
-		f = Frame.new FrameTypes::HEADERS, FLAG_END_HEADERS, r.stream, hblock
-		_send_frame f
+		# split header block into chunks and deliver
+		chunks = hblock.scan(/.{1,#{@max_frame_size}}/).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
+		if chunks.empty?
+			# I cast no judgement here, but shouldn't there be some headers..?
+			chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
+		else
+			chunks.first[:type] = FrameTypes::HEADERS
+			chunks.last[:flags] |= FLAG_END_HEADERS
+		end
+		# without data, the HEADERS ends the stream
+		if r.body.empty?
+			chunks.last[:flags] |= FLAG_END_STREAM
+		end
+		# send the headers frame(s)
+		chunks.each do |chunk|
+			f = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
+			_send_frame f
+		end
+
 		# create data
 		if !r.body.empty?
-			f = Frame.new FrameTypes::DATA, 0, r.stream, r.body
-			_send_frame f
+			chunks = r.body.b.scan(/.{1,#{@max_frame_size}}/).map{|c| {flags: 0, bytes: c} }
+			chunks.last[:flags] |= FLAG_END_STREAM
+			chunks.each do |chunk|
+				f = Frame.new FrameTypes::DATA, chunk[:flags], r.stream, chunk[:bytes]
+				_send_frame f
+			end
 		end
 	end
 
 	def _send_frame f
 		if f.type == FrameTypes::DATA
 			# go through the window
+			_through_window f
 		else
 			@sil << f
+		end
+	end
+
+	# Try to send a frame (e.g. DATA) through the window.
+	# Queues it if the window is too small.
+	def _through_window f
+		# TODO: also check @frames[f.sid][:window_size]
+		if @window_size >= f.payload_size
+			@window_size -= f.payload_size
+			@sil << f
+		else
+			@window_queue << f
 		end
 	end
 
@@ -112,7 +149,7 @@ class HTTPClient
 		else
 			@streams[sid] = {
 				headers: Hash.new{|h,k| h[k] = [] },
-				body: String.new,
+				body: String.new.b,
 				window_size: @default_window_size,
 			}
 			# read the header block
@@ -162,13 +199,27 @@ class HTTPClient
 		else
 			@window_size += increment
 		end
+
+		until @window_queue.empty?
+			f = @window_queue.first
+			# TODO: also check @frames[f.sid][:window_size]
+			if @window_size <= f.payload_size
+				#TODO: LOCK {
+				@window_queue.shift
+				@window_size -= f.payload_size
+				#}
+				@sil << f
+			else
+				break
+			end
+		end
 	end
 
 	# triggered when a completed HTTP request arrives
 	# (farms it off to the registered callback)
 	def _emit_request h
 		# FIXME
-		@request_proc.call HTTPRequest.new( h[:headers][':method'], h[:header][':path'], 'HTTP/2', h[:headers], h[:body] )
+		@request_proc.call HTTPRequest.new( h[:headers].delete(':method'), h[:headers].delete(':path'), 'HTTP/2', h[:headers], h[:body] )
 	end
 end
 

@@ -187,7 +187,7 @@ class ::RUBYH2_HPack
 	end
 
 	def create_block headers
-		bytes = String.new
+		bytes = String.new.b
 		headers.each do |k,v|
 			i = @table_out.find k, v
 			if i

@@ -24,5 +24,9 @@ class Frame
 	def << bytes
 		@payload = (@payload + bytes).freeze
 	end
+
+	def payload_size
+		@payload.bytesize
+	end
 end
 
