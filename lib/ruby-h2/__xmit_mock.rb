@@ -31,12 +31,11 @@ $logger.progname = 'Xmit'
 $logger.datetime_format = '%Y-%m-%d %H:%M:%S'
 $logger.sev_threshold = Logger::DEBUG
 
-include RUBYH2
-include FrameTypes
+include RUBYH2::FrameTypes
 
-$sil = FrameSerialiser.new
-desil = FrameDeserialiser.new
-headers_hook = HeadersHook.new
+$sil = RUBYH2::FrameSerialiser.new
+desil = RUBYH2::FrameDeserialiser.new
+headers_hook = RUBYH2::HeadersHook.new
 desil.on_frame do |f|
 	headers_hook << f
 end
@@ -69,12 +68,12 @@ puts "Three split frames:"
 try { desil << "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00" << "\x00\x00\x00\x00\x00\x00\x02\x00\x00\x02\x00\x00\x00\x00\x00\x03a" << 'a' }
 
 puts "Testing round-trips:"
-try { send Frame.new(DATA,0,0,'') }
-try { send Frame.new(DATA,0,1,'Hello') }
-#try { send Frame.new(DATA,0,-1) }
-try { send Frame.new(HEADERS,4,3,'New Stream') }
+try { send RUBYH2::Frame.new(DATA,0,0,'') }
+try { send RUBYH2::Frame.new(DATA,0,1,'Hello') }
+#try { send RUBYH2::Frame.new(DATA,0,-1) }
+try { send RUBYH2::Frame.new(HEADERS,4,3,'New Stream') }
 
-try { send Frame.new(HEADERS,0,5,'New Stream...') }
-try { send Frame.new(CONTINUATION,0,5,'continued...') }
-try { send Frame.new(CONTINUATION,4,5,'and ended.') }
+try { send RUBYH2::Frame.new(HEADERS,0,5,'New Stream...') }
+try { send RUBYH2::Frame.new(CONTINUATION,0,5,'continued...') }
+try { send RUBYH2::Frame.new(CONTINUATION,4,5,'and ended.') }
 
