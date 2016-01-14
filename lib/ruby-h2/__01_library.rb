@@ -21,7 +21,7 @@ def request_handler r, c
 		else
 			q.status = 404
 			q['content-type'] = 'text/html'
-			q << <<<HTML
+			q << <<HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Not Found</title></head><body><h1>Not Found</h1><p>Resource <tt>#{r.path}</tt> not found.</p></body></html>
 HTML
@@ -29,7 +29,7 @@ HTML
 	else
 			q.status = 405
 			q['content-type'] = 'text/html'
-			q << <<<HTML
+			q << <<HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
 HTML
