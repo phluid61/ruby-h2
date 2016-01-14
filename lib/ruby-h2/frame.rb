@@ -7,7 +7,7 @@ module RUBYH2
 			@type = type
 			@flags = flags
 			@sid = sid
-			@payload = payload.dup.freeze
+			@payload = payload.b.freeze
 		end
 		attr_reader :type
 		attr_reader :flags
@@ -24,7 +24,7 @@ module RUBYH2
 
 		# only used when concatenating HEADERS+CONTINUATION
 		def << bytes
-			@payload = (@payload + bytes).freeze
+			@payload = (@payload + bytes.b).freeze
 		end
 
 		def payload_size
