@@ -1,3 +1,4 @@
+# encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
 require_relative '__01_library'

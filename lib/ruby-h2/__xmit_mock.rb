@@ -31,6 +31,7 @@ $logger.progname = 'Xmit'
 $logger.datetime_format = '%Y-%m-%d %H:%M:%S'
 $logger.sev_threshold = Logger::DEBUG
 
+include RUBYH2
 include FrameTypes
 
 $sil = FrameSerialiser.new

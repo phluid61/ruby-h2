@@ -1,3 +1,4 @@
+# encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
 require_relative '__02_httpclient'
@@ -10,7 +11,7 @@ def get path, &b
 end
 
 def request_handler r, c
-	q = HTTPResponse.new r.stream
+	q = RUBYH2::HTTPResponse.new r.stream
 	case r.method.upcase
 	when 'GET', 'HEAD'
 		callback = _get[r.path]
@@ -42,7 +43,7 @@ at_exit do
 	server = TCPServer.new $port
 	loop do
 		# FIXME: GC?
-		hclient = HTTPClient.new
+		hclient = RUBYH2::HTTPClient.new
 		hclient.on_request {|r| request_handler r, hclient }
 		hclient.wrap server.accept
 	end

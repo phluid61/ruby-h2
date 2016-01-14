@@ -1,149 +1,150 @@
 # encoding: BINARY
 # vim: ts=2:sts=2:sw=2
 
-class ::RUBYH2_HuffmanCodes
+module RUBYH2
+	class HuffmanCodes
 
-	class << self
-		def instance
-			@@instance ||= new
+		class << self
+			def instance
+				@@instance ||= new
+			end
+
+			private :new
+
+			# @return [bits, width]
+			def encode_byte byte
+				instance.encode_byte byte
+			end
+
+			# @return [byte, remaining_bits]
+			def decode_byte bits
+				instance.decode_byte bits
+			end
+
+			def encode str
+				instance.encode str
+			end
+
+			def decode str
+				instance.decode str
+			end
 		end
 
-		private :new
+		#
+		# Load the attached Huffman core table into appropriate
+		# memory structures.
+		#
+		# This is slow, so only do it once.
+		#
+		def initialize
+			parsed = DATA.each_line.each_with_index.map do |line,lineno|
+				if line =~ /([0-9a-f]+)\s+\[\s*(\d+)\]$/
+					x = $1.to_i(16)
+					b = $2.to_i(10)
+					[x, b, "%0#{b}b" % x, lineno]
+				else
+					raise "error on line #{lineno} #{line.inspect}"
+				end
+			end
+
+			@codes = parsed.map{|n,l,*x| [n,l] }
+
+			@decodes = []
+			parsed.sort_by{|a|a[2]}.each do |x,b,s,j|
+				ptr = @decodes
+				_,s,z = s.match(/(.+)(.)/).to_a
+				s.each_char do |c|
+					i = c.to_i
+					ptr[i] ||= []
+					ptr = ptr[i]
+				end
+				i = z.to_i
+				ptr[i] = (j > 0xFF ? nil : j)
+			end
+		end
 
 		# @return [bits, width]
 		def encode_byte byte
-			instance.encode_byte byte
+			
+			@codes[byte] or raise ArgumentError, "invalid byte #{byte.inspect}"
 		end
 
 		# @return [byte, remaining_bits]
 		def decode_byte bits
-			instance.decode_byte bits
+			ptr = @decodes
+			until bits.empty?
+				bit = bits.shift
+				ptr = ptr[bit]
+				unless ptr.is_a? Array
+					return [ptr, bits]
+				end
+			end
+			raise ArgumentError, 'fell off the end'
 		end
 
 		def encode str
-			instance.encode str
+			bytes = []
+			bitq = 0  # a queue
+			bitn = 0  # depth of the queue
+			str.each_byte do |idx|
+				bits, n = @codes[idx]
+				bitq = (bitq << n) | bits  # (max 33 bits wide)
+				bitn += n
+				# canibalise the top bytes
+				while bitn >= 8
+					shift = bitn - 8
+					mask = 0xFF << shift
+					val = (bitq & mask)
+					bytes << (val >> shift)
+					bitq ^= val
+					bitn -= 8
+				end
+			end
+			# pad with EOS (incidentally all 1s)
+			if bitn > 0
+				shift = 8 - bitn
+				mask = (1 << shift) - 1
+				bytes << ((bitq << shift) | mask)
+			end
+			bytes.pack('C*')
 		end
 
 		def decode str
-			instance.decode str
-		end
-	end
-
-	#
-	# Load the attached Huffman core table into appropriate
-	# memory structures.
-	#
-	# This is slow, so only do it once.
-	#
-	def initialize
-		parsed = DATA.each_line.each_with_index.map do |line,lineno|
-			if line =~ /([0-9a-f]+)\s+\[\s*(\d+)\]$/
-				x = $1.to_i(16)
-				b = $2.to_i(10)
-				[x, b, "%0#{b}b" % x, lineno]
-			else
-				raise "error on line #{lineno} #{line.inspect}"
-			end
-		end
-
-		@codes = parsed.map{|n,l,*x| [n,l] }
-
-		@decodes = []
-		parsed.sort_by{|a|a[2]}.each do |x,b,s,j|
-			ptr = @decodes
-			_,s,z = s.match(/(.+)(.)/).to_a
-			s.each_char do |c|
-				i = c.to_i
-				ptr[i] ||= []
-				ptr = ptr[i]
-			end
-			i = z.to_i
-			ptr[i] = (j > 0xFF ? nil : j)
-		end
-	end
-
-	# @return [bits, width]
-	def encode_byte byte
-		
-		@codes[byte] or raise ArgumentError, "invalid byte #{byte.inspect}"
-	end
-
-	# @return [byte, remaining_bits]
-	def decode_byte bits
-		ptr = @decodes
-		until bits.empty?
-			bit = bits.shift
-			ptr = ptr[bit]
-			unless ptr.is_a? Array
-				return [ptr, bits]
-			end
-		end
-		raise ArgumentError, 'fell off the end'
-	end
-
-	def encode str
-		bytes = []
-		bitq = 0  # a queue
-		bitn = 0  # depth of the queue
-		str.each_byte do |idx|
-			bits, n = @codes[idx]
-			bitq = (bitq << n) | bits  # (max 33 bits wide)
-			bitn += n
-			# canibalise the top bytes
-			while bitn >= 8
-				shift = bitn - 8
-				mask = 0xFF << shift
-				val = (bitq & mask)
-				bytes << (val >> shift)
-				bitq ^= val
-				bitn -= 8
-			end
-		end
-		# pad with EOS (incidentally all 1s)
-		if bitn > 0
-			shift = 8 - bitn
-			mask = (1 << shift) - 1
-			bytes << ((bitq << shift) | mask)
-		end
-		bytes.pack('C*')
-	end
-
-	def decode str
-		return '' if str.bytesize == 0
-		bytes = str.unpack('C*')
-		str = []
-		tc = @decodes
-		catch(:done) do
-			until bytes.empty?
-				byte = bytes.shift
-				bc = 0x80
-				mask = 0x7F
-				while bc > 0
-					bit = (byte & bc) == bc ? 1 : 0
-					tc = tc[bit]
-					if tc.is_a? Integer
-						str << tc
-						if bytes.empty? && (byte & mask) == mask
-							tc = nil
-							throw :done
-						else
-							tc = @decodes
+			return '' if str.bytesize == 0
+			bytes = str.unpack('C*')
+			str = []
+			tc = @decodes
+			catch(:done) do
+				until bytes.empty?
+					byte = bytes.shift
+					bc = 0x80
+					mask = 0x7F
+					while bc > 0
+						bit = (byte & bc) == bc ? 1 : 0
+						tc = tc[bit]
+						if tc.is_a? Integer
+							str << tc
+							if bytes.empty? && (byte & mask) == mask
+								tc = nil
+								throw :done
+							else
+								tc = @decodes
+							end
+						elsif tc.nil?
+							raise ArgumentError, 'invalid Huffman code'
 						end
-					elsif tc.nil?
-						raise ArgumentError, 'invalid Huffman code'
+						bc >>= 1
+						mask >>= 1
 					end
-					bc >>= 1
-					mask >>= 1
 				end
 			end
+			if tc
+				raise ArgumentError, 'invalid Huffman code'
+			end
+			str.pack('C*')
 		end
-		if tc
-			raise ArgumentError, 'invalid Huffman code'
-		end
-		str.pack('C*')
-	end
 
-	DATA = <<EOF
+		DATA = <<EOF
     (  0)  |11111111|11000                             1ff8  [13]
     (  1)  |11111111|11111111|1011000                7fffd8  [23]
     (  2)  |11111111|11111111|11111110|0010         fffffe2  [28]
@@ -403,5 +404,6 @@ class ::RUBYH2_HuffmanCodes
 EOS (256)  |11111111|11111111|11111111|111111      3fffffff  [30]
 EOF
 
+	end
 end
 
