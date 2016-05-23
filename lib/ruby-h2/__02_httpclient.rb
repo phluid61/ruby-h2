@@ -53,7 +53,7 @@ module RUBYH2
 			@sil = RUBYH2::FrameSerialiser.new {|b| s.write b } # FIXME: partial write?
 			dsil = RUBYH2::FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
-			_handle_prefixes s
+			_handle_prefaces s
 			_send_frame RUBYH2::Settings.frame_from({0x4 => 2_147_483_647})
 			# FIXME: ensure that first frame is a SETTINGS
 			loop do
@@ -61,7 +61,7 @@ module RUBYH2
 			end
 		end
 
-		def _handle_prefixes s
+		def _handle_prefaces s
 			t0 = Thread.new do
 				preface = String.new.b
 				while preface.length < 24
@@ -184,6 +184,7 @@ module RUBYH2
 			if @streams[f.sid]
 				raise "no END_STREAM on trailing headers" unless f.flag? FLAG_END_STREAM
 			else
+				# FIXME: is this the right stream-id?
 				@streams[sid] = {
 					headers: Hash.new{|h,k| h[k] = [] },
 					body: String.new.b,
@@ -257,9 +258,9 @@ module RUBYH2
 							#}
 							@sil << f
 						end
-					end
+					end# :STREAM_EXHAUSTED
 				end
-			end
+			end# :CONNECTION_EXHAUSTED
 		end
 
 		# triggered when a completed HTTP request arrives
