@@ -37,7 +37,7 @@ module RUBYH2
 				rest = bytes[HEADER_LENGTH..-1]
 				len = (len0 << 16) | len1
 
-				raise "too long (#{len} > #{@max_frame_size}" if len > @max_frame_size
+				raise "too long (#{len} > #{@max_frame_size})" if len > @max_frame_size
 				raise "reserved bit set" if sid & R_MASK != 0
 
 				if rest.bytesize < len
