@@ -50,13 +50,13 @@ module RUBYH2
 		end
 
 		def find n, v
-			@names.each_with_index do |e,i|
+			@dtable.each_with_index do |e,i|
 				return i if e.name == n && e.value == v
 			end
 			nil
 		end
 		def find_name n
-			@names.each_with_index do |e,i|
+			@dtable.each_with_index do |e,i|
 				return i if e.name == n
 			end
 			nil
@@ -148,7 +148,7 @@ module RUBYH2
 			bytes = bytes.to_s unless bytes.is_a? String
 			#raise ArgumentError if bytes.empty?
 			while !bytes.empty?
-				first_byte = bytes.unpack('C')
+				first_byte = bytes.unpack('C').first
 				if first_byte & 0x80 == 0x80
 					# indexed header field representation
 					pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 7
@@ -190,24 +190,24 @@ module RUBYH2
 
 		def create_block headers
 			bytes = String.new.b
-			headers.each do |k,v|
-				i = @table_out.find k, v
+			headers.each do |name, value|
+				i = @table_out.find name, value
 				if i
 					# generate indexed thing
-					chunk = RUBYH2::HPackEncoding.encode_int i, prefix_bits: 7, prefix: 0x80
+					bytes << RUBYH2::HPackEncoding.encode_int( i, prefix_bits: 7, prefix: 0x80 )
 					# TODO: @table_out.add name, value ???
 				else
-					i = @table_out.find_name k
+					i = @table_out.find_name name
 					if i
 						# generate a half-indexed thing
-						chunk = RUBYH2::HPackEncoding.encode_int i, prefix_bits: 6, prefix: 0x40
-						chunk = RUBYH2::HPackEncoding.encode_string value
+						bytes << RUBYH2::HPackEncoding.encode_int( i, prefix_bits: 6, prefix: 0x40 )
+						bytes << RUBYH2::HPackEncoding.encode_string( value )
 						# TODO: @table_out.add name, value ???
 					else
 						# generate a literal thing
-						chunk = RUBYH2::HPackEncoding.encode_int 0, prefix_bits: 6, prefix: 0x40
-						chunk = RUBYH2::HPackEncoding.encode_string name
-						chunk = RUBYH2::HPackEncoding.encode_string value
+						bytes << RUBYH2::HPackEncoding.encode_int( 0, prefix_bits: 6, prefix: 0x40 )
+						bytes << RUBYH2::HPackEncoding.encode_string( name )
+						bytes << RUBYH2::HPackEncoding.encode_string( value )
 						# TODO: @table_out.add name, value ???
 					end
 				end
