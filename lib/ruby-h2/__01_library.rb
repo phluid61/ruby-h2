@@ -5,17 +5,18 @@ require_relative '__02_httpclient'
 
 $port = 8000
 
-_get = {}
+$_get = {}
 def get path, &b
-	_get[path] = b
+	$_get[path] = b
 end
 
 def request_handler r, c
+STDERR.puts "in request_hander #{r.inspect}, #{c.inspect}"
 	q = RUBYH2::HTTPResponse.new r.stream+1
 	begin
 		case r.method.upcase
 		when 'GET', 'HEAD'
-			callback = _get[r.path]
+			callback = $_get[r.path]
 			if callback
 				q.status = 200
 				q['content-type'] = 'text/html'
@@ -38,7 +39,8 @@ HTML
 <html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
 HTML
 		end
-	rescue
+	rescue Exception => x
+		STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
 		q = RUBYH2::HTTPResponse.new r.stream+1 #...
 		q.status = 500
 		q['content-type'] = 'text/html'
@@ -55,11 +57,19 @@ at_exit do
 	require 'socket'
 	threads = ThreadPuddle.new 100
 	server = TCPServer.new $port
+Thread.new{loop{p threads; sleep 10}}
+	Thread.abort_on_exception = true
 	loop do
+		hclient = RUBYH2::HTTPClient.new
+		hclient.on_request {|r| request_handler r, hclient }
+		socket = server.accept
+STDERR.puts "received socket"
+		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+		socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
+		socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
 		threads.spawn do
-			hclient = RUBYH2::HTTPClient.new
-			hclient.on_request {|r| request_handler r, hclient }
-			hclient.wrap server.accept
+STDERR.puts "wrapping socket with hclient"
+			hclient.wrap socket
 		end
 	end
 end

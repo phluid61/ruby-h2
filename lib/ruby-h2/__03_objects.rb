@@ -18,6 +18,10 @@ module RUBYH2
 		attr_reader :version
 		attr_reader :headers
 		attr_reader :body
+
+		def inspect
+			"\#<HTTPRequest @stream=#{@stream.inspect}, @method=#{@method.inspect}, @path=#{@path.inspect}, @version=#{@version.inspect}, @headers=#{@headers.inspect}, @body=#{@body.inspect}>"
+		end
 	end
 
 	class HTTPResponse

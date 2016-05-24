@@ -24,11 +24,14 @@ module RUBYH2
 
 		# accepts bytes, triggers on_frame callbacks
 		def << bytes
+STDERR.puts "* received #{bytes.bytesize} bytes"
 			bytes = @buffer + bytes if @buffer
 			bytes.force_encoding Encoding::BINARY
 
 			until bytes.empty?
+STDERR.puts "* total size = #{bytes.bytesize}"
 				if bytes.bytesize < HEADER_LENGTH
+STDERR.puts "* not enough; waiting for more"
 					@buffer = bytes
 					return self
 				end
@@ -36,11 +39,13 @@ module RUBYH2
 				len0,len1, type, flags, sid = bytes.unpack HEADER_FORMAT
 				rest = bytes[HEADER_LENGTH..-1]
 				len = (len0 << 16) | len1
+STDERR.puts "* [#{len}, 0x#{type.to_s 16}, 0x#{'%02X'%flags}, #{sid}]"
 
 				raise "too long (#{len} > #{@max_frame_size})" if len > @max_frame_size
 				raise "reserved bit set" if sid & R_MASK != 0
 
 				if rest.bytesize < len
+STDERR.puts "* waiting for payload..."
 					@buffer = bytes
 					return self
 				end
