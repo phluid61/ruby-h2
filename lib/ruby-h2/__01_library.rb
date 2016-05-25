@@ -12,7 +12,7 @@ end
 
 def request_handler r, c
 STDERR.puts "in request_hander #{r.inspect}, #{c.inspect}"
-	q = RUBYH2::HTTPResponse.new r.stream+1
+	q = RUBYH2::HTTPResponse.new r.stream
 	begin
 		case r.method.upcase
 		when 'GET', 'HEAD'
@@ -22,7 +22,7 @@ STDERR.puts "in request_hander #{r.inspect}, #{c.inspect}"
 				q['content-type'] = 'text/html'
 				q << callback.call(r, q)
 			else
-				q = RUBYH2::HTTPResponse.new r.stream+1 # wipe any changes from the handler
+				q = RUBYH2::HTTPResponse.new r.stream # wipe any changes from the handler
 				q.status = 404
 				q['content-type'] = 'text/html'
 				q << <<HTML
@@ -31,7 +31,7 @@ STDERR.puts "in request_hander #{r.inspect}, #{c.inspect}"
 HTML
 			end
 		else
-				q = RUBYH2::HTTPResponse.new r.stream+1 #...
+				q = RUBYH2::HTTPResponse.new r.stream #...
 				q.status = 405
 				q['content-type'] = 'text/html'
 				q << <<HTML
@@ -41,7 +41,7 @@ HTML
 		end
 	rescue Exception => x
 		STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
-		q = RUBYH2::HTTPResponse.new r.stream+1 #...
+		q = RUBYH2::HTTPResponse.new r.stream #...
 		q.status = 500
 		q['content-type'] = 'text/html'
 				q << <<HTML
