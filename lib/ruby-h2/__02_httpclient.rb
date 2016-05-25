@@ -31,11 +31,16 @@ module RUBYH2
 			@default_window_size = 65535
 			@window_size = @default_window_size
 			@max_frame_size = 16384
+			@max_streams = nil
+			# other settings
+			@can_push = true
 		end
 
 		def inspect
 			"\#<HTTPClient @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}>"
 		end
+
+		attr_reader :can_push
 
 		##
 		# Set the callback to be invoked when a HTTP request arrives.
@@ -93,6 +98,7 @@ module RUBYH2
 		##
 		# deliver HTTPResponse
 		def deliver r
+			# TODO: @max_streams
 
 			# create headers
 			all_headers = r.headers.dup
@@ -231,12 +237,29 @@ module RUBYH2
 			if f.flag? FLAG_ACK
 				# TODO
 			else
-				# TODO:
-				#parse settings
-				#foreach k=>v
-				#	apply k, v
-				#end
+				hash = RUBYH2::Settings.pairs_from(f)
+				hash.each_pair do |k, v|
+					case k
+					when RUBYH2::Settings::HEADER_TABLE_SIZE
+						@hpack.max_size_out = v
+					when RUBYH2::Settings::ENABLE_PUSH
+						raise 'connect:PROTOCOL_ERROR' unless v == 0 or v == 1 # FIXME
+						@can_push = (v == 1)
+					when RUBYH2::Settings::MAX_CONCURRENT_STREAMS
+						@max_streams = v
+					when RUBYH2::Settings::INITIAL_WINDOW_SIZE
+						raise 'connection:FLOW_CONTROL_ERROR' if v > 0x7fffffff # FIXME
+						@default_window_size = v
+					when RUBYH2::Settings::MAX_FRAME_SIZE
+						raise 'connection:PROTOCOL_ERROR' if v < 0x4000 or v > 0xffffff # FIXME
+						@max_frame_size = v
+					when RUBYH2::Settings::MAX_HEADER_LIST_SIZE
+						# FIXME ???
+					end
+				end
 				#send ACK
+				g = RUBYH2::Frame.new FrameTypes::SETTINGS, FLAG_ACK, 0, ''
+				_send_frame g
 			end
 		end
 

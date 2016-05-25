@@ -144,6 +144,13 @@ module RUBYH2
 			@table_out = RUBYH2::Table.new
 		end
 
+		def max_size_in= i
+			@table_in.max_size = i
+		end
+		def max_size_out= i
+			@table_out.max_size = i
+		end
+
 		def parse_block bytes, &b
 			bytes = bytes.to_s unless bytes.is_a? String
 			#raise ArgumentError if bytes.empty?
