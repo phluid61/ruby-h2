@@ -243,11 +243,12 @@ module RUBYH2
 		def handle_ping f
 			raise 'connection:PROTOCOL_ERROR' unless f.sid == 0
 			raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 8
-			# TODO:
 			if f.flag? FLAG_ACK
-				#verify_pong f.payload
+				#TODO: verify_pong f.payload
 			else
-				#send_pong f.payload
+				# send pong
+				g = RUBYH2::Frame.new FrameTypes::PING, FLAG_ACK, 0, f.payload
+				_send_frame g
 			end
 		end
 

@@ -120,6 +120,10 @@ Thread.pass
 s.xmit [0,0, 0x4, 0x00, 0].pack(HEADER_FORMAT)
 puts "WROTE SETTINGS"
 
+# test ping1
+s.xmit( [0,8, 0x6, 0x00, 0].pack(HEADER_FORMAT)+'UUUUUUUU' )
+puts "SENT PING"
+
 hpack = RUBYH2::HPack.new
 # HEADERS (GET /)
 bytes = hpack.create_block({
@@ -137,6 +141,10 @@ len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x1, 0x01|0x04, 1].pack(HEADER_FORMAT)+bytes )
 s.flush
 puts "WROTE HEADERS"
+
+# test ping2
+s.xmit( [0,8, 0x6, 0x00, 0].pack(HEADER_FORMAT)+'33333333' )
+puts "SENT PING"
 
 sleep 5
 s.close
