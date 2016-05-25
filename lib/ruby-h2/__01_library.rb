@@ -11,7 +11,7 @@ def get path, &b
 end
 
 def request_handler r, c
-STDERR.puts "in request_hander #{r.inspect}, #{c.inspect}"
+STDERR.puts "in request_hander #{r.inspect}"
 	q = RUBYH2::HTTPResponse.new r.stream
 	begin
 		case r.method.upcase
