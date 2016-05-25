@@ -37,7 +37,7 @@ module RUBYH2
 		end
 
 		def inspect
-			"\#<HTTPClient @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}>"
+			"\#<HTTPClient @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @can_push=#{@can_push.inspect}>"
 		end
 
 		attr_reader :can_push
@@ -205,7 +205,7 @@ module RUBYH2
 		def handle_data f
 			# FIXME: if @streams[f.sid] is closed ...
 			@streams[f.sid][:body] << f.payload
-			_emit_request @streams[f.sid] if f.flag? FLAG_END_STREAM
+			_emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
 		end
 
 		def _new_stream
