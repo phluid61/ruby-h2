@@ -99,6 +99,7 @@ module RUBYH2
 		# deliver HTTPResponse
 		def deliver r
 			# TODO: @max_streams
+			@streams[r.stream] = _new_stream
 
 			# create headers
 			all_headers = r.headers.dup
@@ -132,6 +133,9 @@ module RUBYH2
 					_send_frame f
 				end
 			end
+
+			# half-close
+			@streams[r.stream][:open_local] = false # TODO: maybe close/destroy
 		end
 
 		# returns truthy if the given frame carries HTTP semantics
@@ -148,7 +152,8 @@ module RUBYH2
 				@sil << f
 			else
 				s = @streams[f.sid]
-				s = @streams[f.sid] = _new_stream if !s
+				raise if !s # FIXME ?
+				#s = @streams[f.sid] = _new_stream if !s
 				q = @window_queue[f.sid]
 				if q && !q.empty?
 					q << f
@@ -198,6 +203,7 @@ module RUBYH2
 		end
 
 		def handle_data f
+			# FIXME: if @streams[f.sid] is closed ...
 			@streams[f.sid][:body] << f.payload
 			_emit_request @streams[f.sid] if f.flag? FLAG_END_STREAM
 		end
@@ -207,10 +213,14 @@ module RUBYH2
 				headers: {},
 				body: String.new.b,
 				window_size: @default_window_size,
+				# FIXME: this only allows: open, half-closed(local), half-closed(remote), and closed
+				open_local: true,
+				open_remote: true,
 			}
 		end
 
 		def handle_headers f
+			# FIXME: if @streams[f.sid] is closed ...
 			if @streams[f.sid]
 				raise "no END_STREAM on trailing headers" unless f.flag? FLAG_END_STREAM
 			else
@@ -234,6 +244,7 @@ module RUBYH2
 		end
 
 		def handle_settings f
+			# FIXME: if f.sid > 0 ...
 			if f.flag? FLAG_ACK
 				# TODO
 			else
@@ -264,6 +275,7 @@ module RUBYH2
 		end
 
 		def handle_ping f
+			# FIXME: if f.sid > 0 ...
 			raise 'connection:PROTOCOL_ERROR' unless f.sid == 0
 			raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 8
 			if f.flag? FLAG_ACK
@@ -276,6 +288,8 @@ module RUBYH2
 		end
 
 		def handle_window_update f
+			# FIXME: stream states?
+
 			raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 4
 			increment = f.payload.unpack('N').first
 
@@ -316,6 +330,8 @@ module RUBYH2
 		# triggered when a completed HTTP request arrives
 		# (farms it off to the registered callback)
 		def _emit_request sid, h
+			# NB: this is only invoked once we get an END_STREAM flag
+			@streams[sid][:open_remote] = false # TODO: maybe close/destroy
 			# FIXME
 			@request_proc.call RUBYH2::HTTPRequest.new( sid, h[:headers].delete(':method'), h[:headers].delete(':path'), 'HTTP/2', h[:headers], h[:body] )
 		end

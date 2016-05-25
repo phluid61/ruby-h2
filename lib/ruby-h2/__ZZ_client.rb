@@ -97,6 +97,8 @@ puts "read #{bytes.bytesize} bytes" rescue nil
 							puts " #{k}: #{v}"
 						end
 						puts '---', ''
+					when 3
+						# TODO: RST_STREAM
 					when 4
 						bytes = frame[:payload].dup.b
 						puts '---'
