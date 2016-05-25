@@ -23,7 +23,7 @@ module RUBYH2
 			# machinery state
 			@request_proc = nil
 			@hook = RUBYH2::HeadersHook.new
-			@hook.on_frame {|f| STDERR.puts "@hook.on_frame proc'd, receiving"; _recv_frame f }
+			@hook.on_frame {|f| _recv_frame f }
 			@hpack = RUBYH2::HPack.new
 			@window_queue = {}
 			# H2 state
@@ -54,17 +54,18 @@ module RUBYH2
 		#   http_client.wrap server.accept
 		#
 		def wrap s
-STDERR.puts "socket connected"
 			@sil = RUBYH2::FrameSerialiser.new {|b| s.write b } # FIXME: partial write?
 			dsil = RUBYH2::FrameDeserialiser.new
-			dsil.on_frame {|f| STDERR.puts "dsil.on_frame proc'd, sending to @hook"; @hook << f }
+			dsil.on_frame {|f| @hook << f }
 			_handle_prefaces s
 			_send_frame RUBYH2::Settings.frame_from({0x4 => 2_147_483_647})
-STDERR.puts "sent initial SETTINGS"
 			# FIXME: ensure that first frame is a SETTINGS
 			loop do
-STDERR.puts "reading bytes..."
-				bytes = s.read(4*1024*1024)
+				bytes = begin
+					s.readpartial(4*1024*1024)
+				rescue EOFError
+					nil
+				end
 				break if bytes.nil? or bytes.empty?
 				dsil << bytes
 				Thread.pass
@@ -78,18 +79,15 @@ STDERR.puts "reading bytes..."
 			t0 = Thread.new do
 				preface = String.new.b
 				while preface.length < 24
-					preface << s.read(24 - preface.length)
+					preface << s.readpartial(24 - preface.length)
 				end
-STDERR.puts "got preface"
 			end
 			t1 = Thread.new do
 				s.write PREFACE
-STDERR.puts "sent preface"
 			end
 			t0.join
 			raise 'connection:PROTOCOL_ERROR' if preface != PREFACE
 			t1.join
-STDERR.puts "prefaces done"
 		end
 
 		##
@@ -97,7 +95,9 @@ STDERR.puts "prefaces done"
 		def deliver r
 
 			# create headers
-			hblock = @hpack.create_block r.headers
+			all_headers = r.headers.dup
+			all_headers[':status'] = r.status.to_s
+			hblock = @hpack.create_block all_headers
 			# split header block into chunks and deliver
 			chunks = hblock.scan(/.{1,#{@max_frame_size}}/).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
 			if chunks.empty?
@@ -142,7 +142,7 @@ STDERR.puts "prefaces done"
 				@sil << f
 			else
 				s = @streams[f.sid]
-				raise unless s #???
+				s = @streams[f.sid] = _new_stream if !s
 				q = @window_queue[f.sid]
 				if q && !q.empty?
 					q << f
@@ -166,63 +166,50 @@ STDERR.puts "prefaces done"
 		def _recv_frame f
 			case f.type
 			when FrameTypes::DATA
-STDERR.puts "_recv_frame DATA"
 				handle_data f
 			when FrameTypes::HEADERS
-STDERR.puts "_recv_frame HEADERS"
 				handle_headers f
 			when FrameTypes::PRIORITY
-STDERR.puts "_recv_frame PRIORITY"
 				# TODO
 			when FrameTypes::RST_STREAM
-STDERR.puts "_recv_frame RST_STREAM"
 				# TODO
 			when FrameTypes::SETTINGS
-STDERR.puts "_recv_frame SETTINGS"
 				handle_settings f
 			when FrameTypes::PUSH_PROMISE
-STDERR.puts "_recv_frame PUSH_PROMIE"
 				# TODO
 			when FrameTypes::PING
-STDERR.puts "_recv_frame PING"
 				handle_ping f
 			when FrameTypes::GOAWAY
-STDERR.puts "_recv_frame GOAWAY"
 				# TODO
 			when FrameTypes::WINDOW_UPDATE
-STDERR.puts "_recv_frame WINDOW_UPDATE"
 				handle_window_update f
 			when FrameTypes::CONTINUATION
-STDERR.puts "_recv_frame CONTINUATION"
 				# never emitted by the Hook
 				raise 'unexpected CONTINUATION frame'
 			else
-STDERR.puts "_recv_frame ??#{f.type.to_s 16}??"
 				# ignore extension frames
 			end
 		end
 
 		def handle_data f
 			@streams[f.sid][:body] << f.payload
-if f.flag? FLAG_END_STREAM
-STDERR.puts "data frame is a request?"
-else
-STDERR.puts "data frame is not a request?"
-end
 			_emit_request @streams[f.sid] if f.flag? FLAG_END_STREAM
+		end
+
+		def _new_stream
+			{
+				headers: {},
+				body: String.new.b,
+				window_size: @default_window_size,
+			}
 		end
 
 		def handle_headers f
 			if @streams[f.sid]
 				raise "no END_STREAM on trailing headers" unless f.flag? FLAG_END_STREAM
 			else
-STDERR.puts "handle_headers ..."
 				# FIXME: is this the right stream-id?
-				@streams[f.sid] = {
-					headers: {},
-					body: String.new.b,
-					window_size: @default_window_size,
-				}
+				@streams[f.sid] = _new_stream
 				# read the header block
 				@hpack.parse_block(f.payload) do |k, v|
 					hh = @streams[f.sid][:headers]
@@ -235,14 +222,8 @@ STDERR.puts "handle_headers ..."
 						hh[k] = [hh[k], v]
 					end
 				end
-STDERR.puts "headers #{@streams[f.sid][:headers].inspect}"
 			end
 			# if end-of-stream, emit the request
-if f.flag? FLAG_END_STREAM
-STDERR.puts "headers frame is a request?"
-else
-STDERR.puts "headers frame is not a request?"
-end
 			_emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
 		end
 
@@ -311,7 +292,6 @@ end
 		# triggered when a completed HTTP request arrives
 		# (farms it off to the registered callback)
 		def _emit_request sid, h
-STDERR.puts "proc _emit_request"
 			# FIXME
 			@request_proc.call RUBYH2::HTTPRequest.new( sid, h[:headers].delete(':method'), h[:headers].delete(':path'), 'HTTP/2', h[:headers], h[:body] )
 		end

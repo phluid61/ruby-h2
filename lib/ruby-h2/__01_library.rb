@@ -57,18 +57,15 @@ at_exit do
 	require 'socket'
 	threads = ThreadPuddle.new 100
 	server = TCPServer.new $port
-Thread.new{loop{p threads; sleep 10}}
 	Thread.abort_on_exception = true
 	loop do
 		hclient = RUBYH2::HTTPClient.new
 		hclient.on_request {|r| request_handler r, hclient }
 		socket = server.accept
-STDERR.puts "received socket"
 		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-		socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
-		socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
+		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
+		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
 		threads.spawn do
-STDERR.puts "wrapping socket with hclient"
 			hclient.wrap socket
 		end
 	end
