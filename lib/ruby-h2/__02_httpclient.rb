@@ -29,6 +29,7 @@ module RUBYH2
 			@hook.on_frame {|f| recv_frame f }
 			@hpack = RUBYH2::HPack.new
 			@logger = logger
+			@pings = []
 			# H2 state
 			@window_queue = {}
 			@first_frame = true
@@ -266,15 +267,15 @@ module RUBYH2
 					when RUBYH2::Settings::HEADER_TABLE_SIZE
 						@hpack.max_size_out = v
 					when RUBYH2::Settings::ENABLE_PUSH
-						raise 'connect:PROTOCOL_ERROR' unless v == 0 or v == 1 # FIXME
+						raise ConnectionError.new(PROTOCOL_ERROR, "ENABLE_PUSH must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
 						@can_push = (v == 1)
 					when RUBYH2::Settings::MAX_CONCURRENT_STREAMS
 						@max_streams = v
 					when RUBYH2::Settings::INITIAL_WINDOW_SIZE
-						raise 'connection:FLOW_CONTROL_ERROR' if v > 0x7fffffff # FIXME
+						raise ConnectionError.new(FLOW_CONTROL_ERROR, "INITIAL_WINDOW_SIZE too large #{v}") if v > 0x7fffffff # FIXME
 						@default_window_size = v
 					when RUBYH2::Settings::MAX_FRAME_SIZE
-						raise 'connection:PROTOCOL_ERROR' if v < 0x4000 or v > 0xffffff # FIXME
+						raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRIM_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff # FIXME
 						@max_frame_size = v
 					when RUBYH2::Settings::MAX_HEADER_LIST_SIZE
 						# FIXME ???
@@ -289,10 +290,17 @@ module RUBYH2
 
 		def handle_ping f
 			# FIXME: if f.sid > 0 ...
-			raise 'connection:PROTOCOL_ERROR' unless f.sid == 0
-			raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 8
+			raise ConnectionError.new(PROTOCOL_ERROR, "received PING on stream id #{f.sid}") unless f.sid == 0
+			raise ConnectionError.new(FRAME_SIZE_ERROR, "PING payload must be 8 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 8
 			if f.flag? FLAG_ACK
-				#TODO: verify_pong f.payload
+				idx = @pings.find_index f.payload
+				if idx
+					$logger.info "ping pong #{f.payload.inspect}"
+					@pings.delete_at idx
+				else
+					# FIXME
+					raise ConnectionError.new(PROTOCOL_ERROR, "unexpected PONG or incorrect payload #{f.payload.inspect}")
+				end
 			else
 				# send pong
 				g = RUBYH2::Frame.new FrameTypes::PING, FLAG_ACK, 0, f.payload
@@ -339,7 +347,6 @@ module RUBYH2
 				end
 			end# :CONNECTION_EXHAUSTED
 		end
-
 
 	end
 
