@@ -169,6 +169,7 @@ open 1
 bytes = hpack.create_block({
 	':method' => 'GET',
 	':scheme' => 'http',
+	':authority' => 'localhost',
 	':path' => '/',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
@@ -192,6 +193,7 @@ open 3
 bytes = hpack.create_block({
 	':method' => 'GET',
 	':scheme' => 'http',
+	':authority' => 'localhost',
 	':path' => '/nonesuch',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
