@@ -23,10 +23,11 @@ module RUBYH2
 			# machinery state
 			@request_proc = nil
 			@hook = RUBYH2::HeadersHook.new
-			@hook.on_frame {|f| _recv_frame f }
+			@hook.on_frame {|f| recv_frame f }
 			@hpack = RUBYH2::HPack.new
 			@window_queue = {}
 			# H2 state
+			@first_frame = true
 			@streams = {}
 			@default_window_size = 65535
 			@window_size = @default_window_size
@@ -59,12 +60,11 @@ module RUBYH2
 		#   http_client.wrap server.accept
 		#
 		def wrap s
-			@sil = RUBYH2::FrameSerialiser.new {|b| s.write b } # FIXME: partial write?
+			@sil = RUBYH2::FrameSerialiser.new {|b| _write s, b }
 			dsil = RUBYH2::FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
-			_handle_prefaces s
-			_send_frame RUBYH2::Settings.frame_from({0x4 => 2_147_483_647})
-			# FIXME: ensure that first frame is a SETTINGS
+			handle_prefaces s
+			send_frame RUBYH2::Settings.frame_from({0x4 => 2_147_483_647})
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
@@ -76,31 +76,12 @@ module RUBYH2
 				Thread.pass
 			end
 		ensure
-			s.close
-		end
-
-		def _handle_prefaces s
-			preface = nil
-			t0 = Thread.new do
-				preface = String.new.b
-				while preface.length < 24
-					preface << s.readpartial(24 - preface.length)
-				end
-			end
-			t1 = Thread.new do
-				s.write PREFACE
-			end
-			t0.join
-			raise 'connection:PROTOCOL_ERROR' if preface != PREFACE
-			t1.join
+			s.close rescue nil
 		end
 
 		##
 		# deliver HTTPResponse
 		def deliver r
-			# TODO: @max_streams
-			@streams[r.stream] = _new_stream
-
 			# create headers
 			all_headers = r.headers.dup
 			all_headers[':status'] = r.status.to_s
@@ -121,7 +102,7 @@ module RUBYH2
 			# send the headers frame(s)
 			chunks.each do |chunk|
 				f = RUBYH2::Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
-				_send_frame f
+				send_frame f
 			end
 
 			# create data
@@ -130,22 +111,52 @@ module RUBYH2
 				chunks.last[:flags] |= FLAG_END_STREAM
 				chunks.each do |chunk|
 					f = RUBYH2::Frame.new FrameTypes::DATA, chunk[:flags], r.stream, chunk[:bytes]
-					_send_frame f
+					send_frame f
 				end
 			end
 
 			# half-close
-			@streams[r.stream][:open_local] = false # TODO: maybe close/destroy
+			@streams[r.stream].close_local! # TODO: maybe close/destroy
 		end
 
 		# returns truthy if the given frame carries HTTP semantics
 		# (so has to be sent in order)
-		def _semantic_frame? f
+		def semantic_frame? f
 			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION
 		end
 
-		def _send_frame f
-			if !_semantic_frame? f
+	private
+
+		def _write sock, bytes
+			bytes.force_encoding Encoding::BINARY
+			#sock.print bytes
+			until bytes.empty?
+				sent = sock.write bytes
+				#sent = sock.send bytes, 0
+				bytes = bytes[sent..-1]
+			end
+			#sock.flush
+		end
+
+
+		def handle_prefaces s
+			preface = nil
+			t0 = Thread.new do
+				preface = String.new.b
+				while preface.length < 24
+					preface << s.readpartial(24 - preface.length)
+				end
+			end
+			t1 = Thread.new do
+				_write s, PREFACE
+			end
+			t0.join
+			raise 'connection:PROTOCOL_ERROR' if preface != PREFACE
+			t1.join
+		end
+
+		def send_frame f
+			if !semantic_frame? f
 				@sil << f
 			elsif f.sid == 0
 				# FIXME: assumes .type != DATA, etc.
@@ -153,15 +164,15 @@ module RUBYH2
 			else
 				s = @streams[f.sid]
 				raise if !s # FIXME ?
-				#s = @streams[f.sid] = _new_stream if !s
+				#s = @streams[f.sid] = RUBYH2::Stream.new(@default_window_size) if !s
 				q = @window_queue[f.sid]
 				if q && !q.empty?
 					q << f
 				elsif f.type == FrameTypes::DATA
 					b = f.payload_size
-					if @window_size >= b && s[:window_size] >= b
+					if @window_size >= b && s.window_size >= b
 						@window_size -= b
-						s[:window_size] -= b
+						s.window_size -= b
 						@sil << f
 					else
 						@window_queue[f.sid] ||= []
@@ -174,7 +185,14 @@ module RUBYH2
 		end
 
 		# triggered when a new H2 frame arrives
-		def _recv_frame f
+		def recv_frame f
+			if @first_frame
+				# first frame has to be settings
+				# FIXME: make sure this is the actual settings, not the ACK to ours
+				raise 'connection:PROTOCOL_ERROR' if f.type != FrameTypes::SETTINGS
+				@first_frame = false
+			end
+
 			case f.type
 			when FrameTypes::DATA
 				handle_data f
@@ -202,21 +220,20 @@ module RUBYH2
 			end
 		end
 
-		def handle_data f
-			# FIXME: if @streams[f.sid] is closed ...
-			@streams[f.sid][:body] << f.payload
-			_emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
+		# triggered when a completed HTTP request arrives
+		# (farms it off to the registered callback)
+		def emit_request sid, h
+			# NB: this is only invoked once we get an END_STREAM flag
+			@streams[sid].close_remote! # TODO: maybe close/destroy
+			# FIXME
+			headers = h.headers
+			@request_proc.call RUBYH2::HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, h[:body] )
 		end
 
-		def _new_stream
-			{
-				headers: {},
-				body: String.new.b,
-				window_size: @default_window_size,
-				# FIXME: this only allows: open, half-closed(local), half-closed(remote), and closed
-				open_local: true,
-				open_remote: true,
-			}
+		def handle_data f
+			# FIXME: if @streams[f.sid] is closed ...
+			@streams[f.sid] << f.payload
+			emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
 		end
 
 		def handle_headers f
@@ -225,22 +242,14 @@ module RUBYH2
 				raise "no END_STREAM on trailing headers" unless f.flag? FLAG_END_STREAM
 			else
 				# FIXME: is this the right stream-id?
-				@streams[f.sid] = _new_stream
+				@streams[f.sid] = RUBYH2::Stream.new(@default_window_size)
 				# read the header block
 				@hpack.parse_block(f.payload) do |k, v|
-					hh = @streams[f.sid][:headers]
-					case hh[k]
-					when nil
-						hh[k] = v
-					when Array
-						hh[k] << v
-					else
-						hh[k] = [hh[k], v]
-					end
+					@streams[f.sid][k] << v
 				end
 			end
 			# if end-of-stream, emit the request
-			_emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
+			emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
 		end
 
 		def handle_settings f
@@ -269,8 +278,9 @@ module RUBYH2
 					end
 				end
 				#send ACK
+				# FIXME: ensure we only send this after the initial settings
 				g = RUBYH2::Frame.new FrameTypes::SETTINGS, FLAG_ACK, 0, ''
-				_send_frame g
+				send_frame g
 			end
 		end
 
@@ -283,7 +293,7 @@ module RUBYH2
 			else
 				# send pong
 				g = RUBYH2::Frame.new FrameTypes::PING, FLAG_ACK, 0, f.payload
-				_send_frame g
+				send_frame g
 			end
 		end
 
@@ -299,7 +309,7 @@ module RUBYH2
 			raise 'stream:PROTOCOL_ERROR' if increment == 0
 
 			if f.sid != 0
-				@streams[f.sid][:window_size] += increment
+				@streams[f.sid].window_size += increment
 			else
 				@window_size += increment
 			end
@@ -316,10 +326,10 @@ module RUBYH2
 							f = queue.first
 							b = (f.type == FrameTypes::DATA ? f.payload_size : 0)
 							throw :CONNECTION_EXHAUSED if @window_size < b
-							throw :STREAM_EXHAUSTED if s[:window_size] < b
+							throw :STREAM_EXHAUSTED if s.window_size < b
 							queue.shift
 							@window_size -= b
-							s[:window_size] -= b
+							s.window_size -= b
 							@sil << f
 						end
 					end# :STREAM_EXHAUSTED
@@ -327,14 +337,7 @@ module RUBYH2
 			end# :CONNECTION_EXHAUSTED
 		end
 
-		# triggered when a completed HTTP request arrives
-		# (farms it off to the registered callback)
-		def _emit_request sid, h
-			# NB: this is only invoked once we get an END_STREAM flag
-			@streams[sid][:open_remote] = false # TODO: maybe close/destroy
-			# FIXME
-			@request_proc.call RUBYH2::HTTPRequest.new( sid, h[:headers].delete(':method'), h[:headers].delete(':path'), 'HTTP/2', h[:headers], h[:body] )
-		end
+
 	end
 
 end

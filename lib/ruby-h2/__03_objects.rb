@@ -51,5 +51,104 @@ module RUBYH2
 		end
 	end
 
+	class Header
+		def initialize name, value=nil
+			@name = name.downcase
+			@value = value
+		end
+		attr_reader :name
+		attr_accessor :value
+		def << v
+			case @value
+			when nil
+				@value = v
+			when Array
+				@value << v
+			else
+				@value = [@value, v]
+			end
+			v
+		end
+		def inspect
+			"\#<Header #{@name.inspect}:#{@value.inspect}>"
+		end
+		def flatten glue=', ', force_string:false
+			case @value
+			when nil
+				force_string ? '' : nil
+			when Array
+				@value.join(glue)
+			else
+				@value.to_s
+			end
+		end
+	end
+
+	class Stream
+		def initialize window_size
+			@headers = Hash.new {|h,k| h[k] = Header.new(k) }
+			@body = String.new.b
+			@window_size = window_size
+			# FIXME: this only allows: open, half-closed(local), half-closed(remote), and closed
+			@open_local = true
+			@open_remote = true
+		end
+		attr_reader :body
+		attr_accessor :window_size
+
+		# append bytes to the body
+		def << bytes
+			@body << bytes
+		end
+
+		# get the Header named +k+
+		def [] k
+			@headers[k.downcase]
+		end
+		# completely overwrite the Header named +k+
+		def []= k, v
+			@headers[k.downcase].value = v
+		end
+		# Get the headers as a simple Hash.
+		# Options for +flatten+:
+		#  * +nil+ (default)  don't flatten the value
+		#  * +true+           flatten the value using the default separator
+		#  * other            flatten the value using this value as the separator
+		def headers flatten=true
+			hsh = {}
+			if !flatten
+				@headers.each_pair do |k, v|
+					hsh[k] = v.value
+				end
+			elsif flatten == true
+				@headers.each_pair do |k, v|
+					hsh[k] = v.flatten
+				end
+			else
+				@headers.each_pair do |k, v|
+					hsh[k] = v.flatten(flatten)
+				end
+			end
+			hsh
+		end
+
+		def open_local?
+			@open_local
+		end
+
+		def open_remote?
+			@open_remote
+		end
+
+		def close_local!
+			@open_local = false
+		end
+
+		def close_remote!
+			@open_remote = false
+		end
+
+	end
+
 end
 
