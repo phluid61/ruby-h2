@@ -6,6 +6,7 @@ require_relative 'frame-serialiser'
 require_relative 'frame-types'
 require_relative 'headers-hook'
 require_relative 'settings'
+require_relative 'errors'
 require_relative 'hpack'
 
 require_relative '__03_objects'
@@ -19,14 +20,17 @@ module RUBYH2
 		FLAG_ACK         = 0x1
 		FLAG_END_HEADERS = 0x4
 
-		def initialize
+		include RUBYH2::Error
+
+		def initialize logger
 			# machinery state
 			@request_proc = nil
 			@hook = RUBYH2::HeadersHook.new
 			@hook.on_frame {|f| recv_frame f }
 			@hpack = RUBYH2::HPack.new
-			@window_queue = {}
+			@logger = logger
 			# H2 state
+			@window_queue = {}
 			@first_frame = true
 			@streams = {}
 			@default_window_size = 65535
@@ -151,7 +155,7 @@ module RUBYH2
 				_write s, PREFACE
 			end
 			t0.join
-			raise 'connection:PROTOCOL_ERROR' if preface != PREFACE
+			raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
 			t1.join
 		end
 
@@ -163,8 +167,7 @@ module RUBYH2
 				@sil << f
 			else
 				s = @streams[f.sid]
-				raise if !s # FIXME ?
-				#s = @streams[f.sid] = RUBYH2::Stream.new(@default_window_size) if !s
+				s = @streams[f.sid] = RUBYH2::Stream.new(@default_window_size) if !s
 				q = @window_queue[f.sid]
 				if q && !q.empty?
 					q << f
@@ -189,7 +192,7 @@ module RUBYH2
 			if @first_frame
 				# first frame has to be settings
 				# FIXME: make sure this is the actual settings, not the ACK to ours
-				raise 'connection:PROTOCOL_ERROR' if f.type != FrameTypes::SETTINGS
+				raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface - no SETTINGS') if f.type != FrameTypes::SETTINGS
 				@first_frame = false
 			end
 

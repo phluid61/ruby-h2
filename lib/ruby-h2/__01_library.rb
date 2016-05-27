@@ -3,64 +3,85 @@
 
 require_relative '__02_httpclient'
 
-$port = 8000
+require 'logger'
 
-$_get = {}
-def get path, &b
-	$_get[path] = b
-end
+class ApplicationClass
+	def initialize port
+		@port = port
 
-def request_handler r, c
+		@logger = Logger.new STDERR
+		@logger.progname = 'ruby-h2'
+		@logger.datetime_format = '%Y-%m-%d %H:%M:%S'
+		@logger.sev_threshold = Logger::DEBUG
+
+		@_get = {}
+	end
+	attr_accessor :port
+	attr_accessor :logger
+
+	def get path, &proc
+		@_get[path] = proc
+	end
+
+	def request_handler r, c
 STDERR.puts "in request_hander #{r.inspect}"
-	q = RUBYH2::HTTPResponse.new r.stream
-	begin
-		case r.method.upcase
-		when 'GET', 'HEAD'
-			callback = $_get[r.path]
-			if callback
-				q.status = 200
-				q['content-type'] = 'text/html'
-				q << callback.call(r, q)
-			else
-				q = RUBYH2::HTTPResponse.new r.stream # wipe any changes from the handler
-				q.status = 404
-				q['content-type'] = 'text/html'
-				q << <<HTML
+		q = RUBYH2::HTTPResponse.new r.stream
+		begin
+			case r.method.upcase
+			when 'GET', 'HEAD'
+				callback = @_get[r.path]
+				if callback
+					q.status = 200
+					q['content-type'] = 'text/html'
+					q << callback.call(r, q)
+				else
+					q = RUBYH2::HTTPResponse.new r.stream # wipe any changes from the handler
+					q.status = 404
+					q['content-type'] = 'text/html'
+					q << <<HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Not Found</title></head><body><h1>Not Found</h1><p>Resource <tt>#{r.path}</tt> not found.</p></body></html>
 HTML
-			end
-		else
-				q = RUBYH2::HTTPResponse.new r.stream #...
-				q.status = 405
-				q['content-type'] = 'text/html'
-				q << <<HTML
+				end
+			else
+					q = RUBYH2::HTTPResponse.new r.stream #...
+					q.status = 405
+					q['content-type'] = 'text/html'
+					q << <<HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
 HTML
-		end
-	rescue Exception => x
-		STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
-		q = RUBYH2::HTTPResponse.new r.stream #...
-		q.status = 500
-		q['content-type'] = 'text/html'
-				q << <<HTML
+			end
+		rescue Exception => x
+			STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
+			q = RUBYH2::HTTPResponse.new r.stream #...
+			q.status = 500
+			q['content-type'] = 'text/html'
+					q << <<HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Internal Server Error</title></head><body><h1>Internal Server Error</h1><p>An error occurred while attempting to handle your request.</p></body></html>
 HTML
+		end
+		c.deliver q
 	end
-	c.deliver q
 end
+
+Application = ApplicationClass.new(8000)
+
+def get path, &proc
+	Application.get path, &proc
+end
+
 
 at_exit do
 	require 'threadpuddle'
 	require 'socket'
 	threads = ThreadPuddle.new 100
-	server = TCPServer.new $port
+	server = TCPServer.new Application.port
 	Thread.abort_on_exception = true
 	loop do
-		hclient = RUBYH2::HTTPClient.new
-		hclient.on_request {|r| request_handler r, hclient }
+		hclient = RUBYH2::HTTPClient.new(Application.logger)
+		hclient.on_request {|r| Application.request_handler r, hclient }
 		socket = server.accept
 		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))

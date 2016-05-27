@@ -140,6 +140,23 @@ module RUBYH2
 			@open_remote
 		end
 
+		def state
+			# TODO: idle/reserved(*)/..?
+			if @open_local
+				if @open_remote
+					:open
+				else
+					:halfclosedremote
+				end
+			else
+				if @open_remote
+					:halfclosedlocal
+				else
+					:closed
+				end
+			end
+		end
+
 		def close_local!
 			@open_local = false
 		end

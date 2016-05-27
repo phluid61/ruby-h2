@@ -3,7 +3,7 @@
 
 require_relative '__01_library'
 
-$port = 8888
+Application.port = 8888
 
 get '/' do
 	<<HTML
