@@ -232,7 +232,15 @@ len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x0, 0x01, 5].pack(HEADER_FORMAT)+payload )
 puts "WROTE DATA"
-half_close 3
+half_close 5
+
+sleep 0.5
+
+bytes = [0,0x0].pack('NN') + 'Cya'
+len = bytes.bytesize
+len0 = len >> 16
+len1 = len & 0xFFFF
+s.xmit( [len0,len1, 0x7, 0x00, 0].pack(HEADER_FORMAT)+bytes )
 
 sleep 5
 $ignore_EOFError = true
