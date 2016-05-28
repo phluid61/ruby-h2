@@ -23,8 +23,8 @@ class ApplicationClass
 		@_get[path] = proc
 	end
 
-	def request_handler r, c
-STDERR.puts "in request_hander #{r.inspect}"
+	def handle_request r, c
+		@logger.info "in request_hander #{r.inspect}"
 		q = RUBYH2::HTTPResponse.new r.stream
 		begin
 			case r.method.upcase
@@ -72,20 +72,21 @@ def get path, &proc
 	Application.get path, &proc
 end
 
-
 at_exit do
 	require 'threadpuddle'
 	require 'socket'
 	threads = ThreadPuddle.new 100
 	server = TCPServer.new Application.port
+	Application.logger.info "listening on port #{Application.port}"
 	Thread.abort_on_exception = true
 	loop do
 		hclient = RUBYH2::HTTPClient.new(Application.logger)
-		hclient.on_request {|r| Application.request_handler r, hclient }
+		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
 		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
+		Application.logger.info "client connected from #{socket.remote_address.inspect_sockaddr}"
 		threads.spawn do
 			hclient.wrap socket
 		end
