@@ -30,6 +30,9 @@ module RUBYH2
 			@hpack = RUBYH2::HPack.new
 			@logger = logger
 			@pings = []
+			@goaway = false
+			@last_stream = 0 # last incoming stream handed up to application
+			@shutting_down = false
 			# H2 state
 			@window_queue = {}
 			@first_frame = true
@@ -69,19 +72,31 @@ module RUBYH2
 			dsil = RUBYH2::FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s
-			send_frame RUBYH2::Settings.frame_from({0x4 => 2_147_483_647})
+			send_frame RUBYH2::Settings.frame_from({RUBYH2::Settings::INITIAL_WINDOW_SIZE => 2_147_483_647})
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
 				rescue EOFError
 					nil
 				end
-				break if bytes.nil? or bytes.empty?
+				if bytes.nil? or bytes.empty?
+					@logger.info "client disconnected from #{s.remote_address.inspect_sockaddr}"
+					break
+				end
 				dsil << bytes
 				Thread.pass
 			end
 		ensure
 			s.close rescue nil
+		end
+
+		##
+		# Shut down the connection.
+		def shut_down
+			return if @shutting_down
+			@shutting_down = true
+			g = RUBYH2::Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,NO_ERROR].pack('NN')
+			send_frame g
 		end
 
 		##
@@ -121,7 +136,7 @@ module RUBYH2
 			end
 
 			# half-close
-			@streams[r.stream].close_local! # TODO: maybe close/destroy
+			@streams[r.stream].close_local!
 		end
 
 		# returns truthy if the given frame carries HTTP semantics
@@ -197,6 +212,19 @@ module RUBYH2
 				@first_frame = false
 			end
 
+			if @goaway
+				case f.type
+				when FrameTypes::DATA
+				when FrameTypes::HEADERS
+				when FrameTypes::PUSH_PROMISE
+				when FrameTypes::CONTINUATION
+				else
+					# FIXME
+					@logger.info "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
+					return
+				end
+			end
+
 			case f.type
 			when FrameTypes::DATA
 				handle_data f
@@ -213,7 +241,7 @@ module RUBYH2
 			when FrameTypes::PING
 				handle_ping f
 			when FrameTypes::GOAWAY
-				# TODO
+				handle_goaway f
 			when FrameTypes::WINDOW_UPDATE
 				handle_window_update f
 			when FrameTypes::CONTINUATION
@@ -227,8 +255,9 @@ module RUBYH2
 		# triggered when a completed HTTP request arrives
 		# (farms it off to the registered callback)
 		def emit_request sid, h
-			# NB: this is only invoked once we get an END_STREAM flag
-			@streams[sid].close_remote! # TODO: maybe close/destroy
+			# NB: this function only invoked once we get an END_STREAM flag
+			@streams[sid].close_remote!
+			@last_stream = sid
 			# FIXME
 			headers = h.headers
 			@request_proc.call RUBYH2::HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, h[:body] )
@@ -236,7 +265,17 @@ module RUBYH2
 
 		def handle_data f
 			# FIXME: if @streams[f.sid] is closed ...
-			@streams[f.sid] << f.payload
+			return if @goaway
+
+			bytes = f.payload
+
+			# never run out of window space
+			g = RUBYH2::Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
+			h = RUBYH2::Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [bytes.bytesize].pack('N')
+			send_frame g
+			send_frame h
+
+			@streams[f.sid] << bytes
 			emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
 		end
 
@@ -252,8 +291,11 @@ module RUBYH2
 					@streams[f.sid][k] << v
 				end
 			end
-			# if end-of-stream, emit the request
-			emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
+
+			if !@goaway
+				# if end-of-stream, emit the request
+				emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
+			end
 		end
 
 		def handle_settings f
@@ -295,7 +337,7 @@ module RUBYH2
 			if f.flag? FLAG_ACK
 				idx = @pings.find_index f.payload
 				if idx
-					$logger.info "ping pong #{f.payload.inspect}"
+					@logger.info "ping pong #{f.payload.inspect}"
 					@pings.delete_at idx
 				else
 					# FIXME
@@ -306,6 +348,16 @@ module RUBYH2
 				g = RUBYH2::Frame.new FrameTypes::PING, FLAG_ACK, 0, f.payload
 				send_frame g
 			end
+		end
+
+		def handle_goaway f
+			raise ConnectionError.new(PROTOCOL_ERROR, "received GOAWAY on stream id #{f.sid}") unless f.sid == 0
+			# TODO
+			@goaway, error_code, debug_data = f.payload.unpack('NNa*')
+			@logger.info "received GOAWAY (last stream ID=#{@goaway}, error_code=0x#{error_code.to_s 16}"
+			@logger.info debug_data.inspect if debug_data && debug_data.bytesize > 0
+
+			shut_down unless @shutting_down
 		end
 
 		def handle_window_update f
