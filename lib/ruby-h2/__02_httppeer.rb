@@ -20,14 +20,14 @@ module RUBYH2
 		FLAG_ACK         = 0x1
 		FLAG_END_HEADERS = 0x4
 
-		include RUBYH2::Error
+		include Error
 
 		def initialize logger
 			# machinery state
 			@request_proc = nil
-			@hook = RUBYH2::HeadersHook.new
+			@hook = HeadersHook.new
 			@hook.on_frame {|f| recv_frame f }
-			@hpack = RUBYH2::HPack.new
+			@hpack = HPack.new
 			@logger = logger
 			# H2 state
 			@window_queue = {}
@@ -68,11 +68,11 @@ module RUBYH2
 		#   http_client.wrap server.accept
 		#
 		def wrap s
-			@sil = RUBYH2::FrameSerialiser.new {|b| _write s, b }
-			dsil = RUBYH2::FrameDeserialiser.new
+			@sil = FrameSerialiser.new {|b| _write s, b }
+			dsil = FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s
-			send_frame RUBYH2::Settings.frame_from({RUBYH2::Settings::INITIAL_WINDOW_SIZE => 0x7fffffff})
+			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff})
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
@@ -95,7 +95,7 @@ module RUBYH2
 		def shut_down
 			return if @shutting_down
 			@shutting_down = true
-			g = RUBYH2::Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,NO_ERROR].pack('NN')
+			g = Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,NO_ERROR].pack('NN')
 			send_frame g
 		end
 
@@ -121,7 +121,7 @@ module RUBYH2
 			end
 			# send the headers frame(s)
 			chunks.each do |chunk|
-				f = RUBYH2::Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
+				f = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
 				send_frame f
 			end
 
@@ -130,7 +130,7 @@ module RUBYH2
 				chunks = r.body.b.scan(/.{1,#{@max_frame_size}}/).map{|c| {flags: 0, bytes: c} }
 				chunks.last[:flags] |= FLAG_END_STREAM
 				chunks.each do |chunk|
-					f = RUBYH2::Frame.new FrameTypes::DATA, chunk[:flags], r.stream, chunk[:bytes]
+					f = Frame.new FrameTypes::DATA, chunk[:flags], r.stream, chunk[:bytes]
 					send_frame f
 				end
 			end
@@ -183,7 +183,7 @@ module RUBYH2
 				@sil << f
 			else
 				s = @streams[f.sid]
-				s = @streams[f.sid] = RUBYH2::Stream.new(@default_window_size) if !s
+				s = @streams[f.sid] = Stream.new(@default_window_size) if !s
 				q = @window_queue[f.sid]
 				if q && !q.empty?
 					q << f
@@ -260,7 +260,7 @@ module RUBYH2
 			@last_stream = sid
 			# FIXME
 			headers = h.headers
-			@request_proc.call RUBYH2::HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, h[:body] )
+			@request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, h[:body] )
 		end
 
 		def handle_data f
@@ -270,8 +270,8 @@ module RUBYH2
 			bytes = f.payload
 
 			# never run out of window space
-			g = RUBYH2::Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
-			h = RUBYH2::Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [bytes.bytesize].pack('N')
+			g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
+			h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [bytes.bytesize].pack('N')
 			send_frame g
 			send_frame h
 
@@ -285,7 +285,7 @@ module RUBYH2
 				raise "no END_STREAM on trailing headers" unless f.flag? FLAG_END_STREAM
 			else
 				# FIXME: is this the right stream-id?
-				@streams[f.sid] = RUBYH2::Stream.new(@default_window_size)
+				@streams[f.sid] = Stream.new(@default_window_size)
 				# read the header block
 				@hpack.parse_block(f.payload) do |k, v|
 					@streams[f.sid][k] << v
@@ -303,29 +303,29 @@ module RUBYH2
 			if f.flag? FLAG_ACK
 				# TODO
 			else
-				hash = RUBYH2::Settings.pairs_from(f)
+				hash = Settings.pairs_from(f)
 				hash.each_pair do |k, v|
 					case k
-					when RUBYH2::Settings::HEADER_TABLE_SIZE
+					when Settings::HEADER_TABLE_SIZE
 						@hpack.max_size_out = v
-					when RUBYH2::Settings::ENABLE_PUSH
+					when Settings::ENABLE_PUSH
 						raise ConnectionError.new(PROTOCOL_ERROR, "ENABLE_PUSH must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
 						@push_to_client = (v == 1)
-					when RUBYH2::Settings::MAX_CONCURRENT_STREAMS
+					when Settings::MAX_CONCURRENT_STREAMS
 						@max_streams = v
-					when RUBYH2::Settings::INITIAL_WINDOW_SIZE
+					when Settings::INITIAL_WINDOW_SIZE
 						raise ConnectionError.new(FLOW_CONTROL_ERROR, "INITIAL_WINDOW_SIZE too large #{v}") if v > 0x7fffffff # FIXME
 						@default_window_size = v
-					when RUBYH2::Settings::MAX_FRAME_SIZE
+					when Settings::MAX_FRAME_SIZE
 						raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRIM_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff # FIXME
 						@max_frame_size = v
-					when RUBYH2::Settings::MAX_HEADER_LIST_SIZE
+					when Settings::MAX_HEADER_LIST_SIZE
 						# FIXME ???
 					end
 				end
 				#send ACK
 				# FIXME: ensure we only send this after the initial settings
-				g = RUBYH2::Frame.new FrameTypes::SETTINGS, FLAG_ACK, 0, ''
+				g = Frame.new FrameTypes::SETTINGS, FLAG_ACK, 0, ''
 				send_frame g
 			end
 		end
@@ -345,7 +345,7 @@ module RUBYH2
 				end
 			else
 				# send pong
-				g = RUBYH2::Frame.new FrameTypes::PING, FLAG_ACK, 0, f.payload
+				g = Frame.new FrameTypes::PING, FLAG_ACK, 0, f.payload
 				send_frame g
 			end
 		end
