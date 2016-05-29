@@ -15,7 +15,7 @@ module RUBYH2
 
 	PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
-	class HTTPClient
+	class HTTPPeer
 		FLAG_END_STREAM  = 0x1
 		FLAG_ACK         = 0x1
 		FLAG_END_HEADERS = 0x4
@@ -29,10 +29,6 @@ module RUBYH2
 			@hook.on_frame {|f| recv_frame f }
 			@hpack = RUBYH2::HPack.new
 			@logger = logger
-			@pings = []
-			@goaway = false
-			@last_stream = 0 # last incoming stream handed up to application
-			@shutting_down = false
 			# H2 state
 			@window_queue = {}
 			@first_frame = true
@@ -41,15 +37,19 @@ module RUBYH2
 			@window_size = @default_window_size
 			@max_frame_size = 16384
 			@max_streams = nil
+			@push_to_client = true
 			# other settings
-			@can_push = true
+			@pings = []
+			@goaway = false
+			@last_stream = 0 # last incoming stream handed up to application
+			@shutting_down = false
 		end
 
 		def inspect
-			"\#<HTTPClient @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @can_push=#{@can_push.inspect}>"
+			"\#<HTTPPeer @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_client=#{@push_to_client.inspect}>"
 		end
 
-		attr_reader :can_push
+		attr_reader :push_to_client
 
 		##
 		# Set the callback to be invoked when a HTTP request arrives.
@@ -72,7 +72,7 @@ module RUBYH2
 			dsil = RUBYH2::FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s
-			send_frame RUBYH2::Settings.frame_from({RUBYH2::Settings::INITIAL_WINDOW_SIZE => 2_147_483_647})
+			send_frame RUBYH2::Settings.frame_from({RUBYH2::Settings::INITIAL_WINDOW_SIZE => 0x7fffffff})
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
@@ -310,7 +310,7 @@ module RUBYH2
 						@hpack.max_size_out = v
 					when RUBYH2::Settings::ENABLE_PUSH
 						raise ConnectionError.new(PROTOCOL_ERROR, "ENABLE_PUSH must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
-						@can_push = (v == 1)
+						@push_to_client = (v == 1)
 					when RUBYH2::Settings::MAX_CONCURRENT_STREAMS
 						@max_streams = v
 					when RUBYH2::Settings::INITIAL_WINDOW_SIZE

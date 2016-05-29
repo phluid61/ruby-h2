@@ -80,7 +80,7 @@ at_exit do
 	Application.logger.info "listening on port #{Application.port}"
 	Thread.abort_on_exception = true
 	loop do
-		hclient = RUBYH2::HTTPClient.new(Application.logger)
+		hclient = RUBYH2::HTTPPeer.new(Application.logger)
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
 		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
