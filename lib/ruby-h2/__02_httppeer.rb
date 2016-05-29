@@ -1,6 +1,8 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
+require 'thread'
+
 require_relative 'frame-deserialiser'
 require_relative 'frame-serialiser'
 require_relative 'frame-types'
@@ -43,6 +45,8 @@ module RUBYH2
 			@goaway = false
 			@last_stream = 0 # last incoming stream handed up to application
 			@shutting_down = false
+
+			@shutdown_lock = Mutex.new
 		end
 
 		def inspect
@@ -93,8 +97,10 @@ module RUBYH2
 		##
 		# Shut down the connection.
 		def shut_down
-			return if @shutting_down
-			@shutting_down = true
+			@shutdown_mutex.synchronize {
+				return if @shutting_down
+				@shutting_down = true
+			}
 			g = Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,NO_ERROR].pack('NN')
 			send_frame g
 		end
@@ -102,6 +108,10 @@ module RUBYH2
 		##
 		# deliver HTTPResponse
 		def deliver r
+			@shutdown_mutex.synchronize {
+				raise "delivering response after GOAWAY" if @shutting_down # FIXME
+			}
+
 			# create headers
 			all_headers = r.headers.dup
 			all_headers[':status'] = r.status.to_s
@@ -357,7 +367,7 @@ module RUBYH2
 			@logger.info "received GOAWAY (last stream ID=#{@goaway}, error_code=0x#{error_code.to_s 16}"
 			@logger.info debug_data.inspect if debug_data && debug_data.bytesize > 0
 
-			shut_down unless @shutting_down
+			shut_down
 		end
 
 		def handle_window_update f
