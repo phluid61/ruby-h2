@@ -37,7 +37,7 @@ module RUBYH2
 			@window_size = @default_window_size
 			@max_frame_size = 16384
 			@max_streams = nil
-			@push_to_client = true
+			@push_to_peer = true
 			# other settings
 			@pings = []
 			@goaway = false
@@ -46,10 +46,10 @@ module RUBYH2
 		end
 
 		def inspect
-			"\#<HTTPPeer @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_client=#{@push_to_client.inspect}>"
+			"\#<HTTPPeer @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_peer=#{@push_to_peer.inspect}>"
 		end
 
-		attr_reader :push_to_client
+		attr_reader :push_to_peer
 
 		##
 		# Set the callback to be invoked when a HTTP request arrives.
@@ -310,7 +310,7 @@ module RUBYH2
 						@hpack.max_size_out = v
 					when Settings::ENABLE_PUSH
 						raise ConnectionError.new(PROTOCOL_ERROR, "ENABLE_PUSH must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
-						@push_to_client = (v == 1)
+						@push_to_peer = (v == 1)
 					when Settings::MAX_CONCURRENT_STREAMS
 						@max_streams = v
 					when Settings::INITIAL_WINDOW_SIZE
