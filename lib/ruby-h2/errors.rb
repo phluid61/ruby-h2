@@ -34,5 +34,8 @@ module RUBYH2
 	class StreamError < GenericError
 	end
 
+	class SemanticError < StandardError
+	end
+
 end
 

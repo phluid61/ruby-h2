@@ -33,7 +33,8 @@ module RUBYH2
 			@logger = logger
 			# H2 state
 			@window_queue = {}
-			@first_frame = true
+			@first_frame_in = true
+			@first_frame_out = true
 			@streams = {}
 			@default_window_size = 65535
 			@window_size = @default_window_size
@@ -46,6 +47,7 @@ module RUBYH2
 			@last_stream = 0 # last incoming stream handed up to application
 			@shutting_down = false
 
+			@send_lock = Mutex.new
 			@shutdown_lock = Mutex.new
 		end
 
@@ -76,7 +78,7 @@ module RUBYH2
 			dsil = FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s
-			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff})
+			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
@@ -185,7 +187,31 @@ module RUBYH2
 			t1.join
 		end
 
-		def send_frame f
+		def send_frame f, is_first_settings=false
+			if is_first_settings
+				# Unset @first_frame_out and transmit said first frame, atomically
+				@send_lock.synchronize do
+					@first_frame_out = false
+					_do_send_frame f
+				end
+			else
+				# FIXME: this is horrible
+				# Spin-lock on @first_frame_out being unset.
+				# Note that writes to @first_frame_out are sync'd by @send_lock
+				wait = false
+				@send_lock.synchronize { wait = @first_frame_out }
+				while wait
+					sleep 0.1
+					@send_lock.synchronize { wait = @first_frame_out }
+				end
+				# Actually transmit the frame, atomically.
+				@send_lock.synchronize do
+					_do_send_frame f
+				end
+			end
+		end
+
+		def _do_send_frame f
 			if !semantic_frame? f
 				@sil << f
 			elsif f.sid == 0
@@ -196,6 +222,7 @@ module RUBYH2
 				s = @streams[f.sid] = Stream.new(@default_window_size) if !s
 				q = @window_queue[f.sid]
 				if q && !q.empty?
+					# there's a queue; wait for a WINDOW_UPDATE
 					q << f
 				elsif f.type == FrameTypes::DATA
 					b = f.payload_size
@@ -215,11 +242,11 @@ module RUBYH2
 
 		# triggered when a new H2 frame arrives
 		def recv_frame f
-			if @first_frame
+			if @first_frame_in
 				# first frame has to be settings
 				# FIXME: make sure this is the actual settings, not the ACK to ours
 				raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface - no SETTINGS') if f.type != FrameTypes::SETTINGS
-				@first_frame = false
+				@first_frame_in = false
 			end
 
 			if @goaway
@@ -264,17 +291,22 @@ module RUBYH2
 
 		# triggered when a completed HTTP request arrives
 		# (farms it off to the registered callback)
-		def emit_request sid, h
+		def emit_request sid, stream
 			# NB: this function only invoked once we get an END_STREAM flag
-			@streams[sid].close_remote!
+			stream.close_remote!
 			@last_stream = sid
 			# FIXME
-			headers = h.headers
-			@request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, h[:body] )
+			headers = stream.headers
+			@request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, stream.body )
 		end
 
 		def handle_data f
-			# FIXME: if @streams[f.sid] is closed ...
+			raise ConnectionError.new(PROTOCOL_ERROR, "DATA must be sent on stream >0") if f.sid == 0
+
+			stream = @streams[f.sid]
+			raise SemanticError.new("DATA frame with invalid stream id #{f.sid}") unless stream
+			raise StreamError.new(STREAM_CLOSED, "DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
+
 			return if @goaway
 
 			bytes = f.payload
@@ -285,16 +317,18 @@ module RUBYH2
 			send_frame g
 			send_frame h
 
-			@streams[f.sid] << bytes
-			emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
+			stream << bytes
+			emit_request f.sid, stream if f.flag? FLAG_END_STREAM
 		end
 
 		def handle_headers f
-			# FIXME: if @streams[f.sid] is closed ...
 			if @streams[f.sid]
-				raise "no END_STREAM on trailing headers" unless f.flag? FLAG_END_STREAM
+				raise SemanticError.new("no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM #FIXME: malformed => StreamError:PROTOCOL_ERROR ?
+				raise StreamError.new(STREAM_CLOSED, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
 			else
-				# FIXME: is this the right stream-id?
+				raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
+				raise ConnectionError.new(PROTOCOL_ERROR, "new stream id #{f.sid} not greater than previous stream id #{@last_stream}") if f.sid <= @last_stream
+				raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by client must be odd, received #{f.sid}") if f.sid % 2 != 1
 				@streams[f.sid] = Stream.new(@default_window_size)
 				# read the header block
 				@hpack.parse_block(f.payload) do |k, v|
@@ -302,14 +336,13 @@ module RUBYH2
 				end
 			end
 
-			if !@goaway
-				# if end-of-stream, emit the request
-				emit_request f.sid, @streams[f.sid] if f.flag? FLAG_END_STREAM
-			end
+			# if end-of-stream, emit the request
+			emit_request f.sid, @streams[f.sid] if !@goaway && f.flag? FLAG_END_STREAM
 		end
 
 		def handle_settings f
-			# FIXME: if f.sid > 0 ...
+			raise ConnectionError.new(PROTOCOL_ERROR, "SETTINGS must be sent on stream 0, received #{f.sid}") if f.sid != 0
+
 			if f.flag? FLAG_ACK
 				# TODO
 			else
@@ -327,7 +360,7 @@ module RUBYH2
 						raise ConnectionError.new(FLOW_CONTROL_ERROR, "INITIAL_WINDOW_SIZE too large #{v}") if v > 0x7fffffff # FIXME
 						@default_window_size = v
 					when Settings::MAX_FRAME_SIZE
-						raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRIM_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff # FIXME
+						raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRAME_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff # FIXME
 						@max_frame_size = v
 					when Settings::MAX_HEADER_LIST_SIZE
 						# FIXME ???
