@@ -99,7 +99,7 @@ module RUBYH2
 		##
 		# Shut down the connection.
 		def shut_down
-			@shutdown_mutex.synchronize {
+			@shutdown_lock.synchronize {
 				return if @shutting_down
 				@shutting_down = true
 			}
@@ -110,7 +110,7 @@ module RUBYH2
 		##
 		# deliver HTTPResponse
 		def deliver r
-			@shutdown_mutex.synchronize {
+			@shutdown_lock.synchronize {
 				raise "delivering response after GOAWAY" if @shutting_down # FIXME
 			}
 
@@ -337,7 +337,7 @@ module RUBYH2
 			end
 
 			# if end-of-stream, emit the request
-			emit_request f.sid, @streams[f.sid] if !@goaway && f.flag? FLAG_END_STREAM
+			emit_request f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
 		end
 
 		def handle_settings f
