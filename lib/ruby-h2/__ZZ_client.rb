@@ -135,7 +135,7 @@ puts "read #{bytes.bytesize} bytes" rescue nil
 							bytes = frame[:payload].dup.b
 							puts '---'
 							until bytes.nil? or bytes.empty?
-								k, v, bytes = bytes.unpack 'nNC*'
+								k, v, bytes = bytes.unpack 'nNa*'
 								puts " #{'%02X' % k} = #{v}"
 							end
 							puts '---'
