@@ -13,6 +13,9 @@ module RUBYH2
 		GOAWAY        = 0x7
 		WINDOW_UPDATE = 0x8
 		CONTINUATION  = 0x9
+
+		GZIPPED_DATA  = 0xf0 # Experimental
+		DROPPED_FRAME = 0xf1
 	end
 end
 

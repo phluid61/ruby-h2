@@ -2,6 +2,8 @@
 # vim: ts=2 sts=2 sw=2
 
 require 'thread'
+require 'zlib'
+require 'stringio'
 
 require_relative 'frame-deserialiser'
 require_relative 'frame-serialiser'
@@ -21,6 +23,7 @@ module RUBYH2
 		FLAG_END_STREAM  = 0x1
 		FLAG_ACK         = 0x1
 		FLAG_END_HEADERS = 0x4
+		FLAG_PADDED      = 0x8
 
 		include Error
 
@@ -41,6 +44,10 @@ module RUBYH2
 			@max_frame_size = 16384
 			@max_streams = nil
 			@push_to_peer = true
+			@ext__send_gzip = false
+			@ext__recv_gzip = true
+			@ext__sent_dropped_frame = {}
+			@ext__peer_dropped_frame = {}
 			# other settings
 			@pings = []
 			@goaway = false
@@ -78,7 +85,7 @@ module RUBYH2
 			dsil = FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s
-			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
+			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
@@ -155,6 +162,25 @@ module RUBYH2
 		# (so has to be sent in order)
 		def semantic_frame? f
 			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION
+		end
+
+		# are we configured to accept GZIPPED_DATA frames from this peer?
+		def accept_gzip?
+			@ext__recv_gzip
+		end
+		# tell the peer we'll accept GZIPPED_DATA frames
+		def accept_gzip!
+			if !@ext__recv_gzip
+				send_frame Settings.frame_from({Settings::ACCEPT_GZIPPED_DATA => 1})
+				@ext__recv_gzip = true
+			end
+		end
+		# tell the peer we don't accept GZIPPED_DATA frames
+		def no_gzip!
+			if @ext__recv_gzip
+				send_frame Settings.frame_from({Settings::ACCEPT_GZIPPED_DATA => 0})
+				@ext__recv_gzip = false
+			end
 		end
 
 	private
@@ -284,9 +310,33 @@ module RUBYH2
 			when FrameTypes::CONTINUATION
 				# never emitted by the Hook
 				raise 'unexpected CONTINUATION frame'
+
+			# EXTENSION FRAME HANDLING
+			when FrameTypes::GZIPPED_DATA
+				handle_gzipped_data f
+			when FrameTypes::DROPPED_FRAME
+				handle_dropped_frame f
 			else
-				# ignore extension frames
+				# ignore unrecognised/extension frames
+				drop_frame f
 			end
+		end
+
+		# tell the peer we ignored it
+		def drop_frame f
+			if !@ext__sent_dropped_frame[f.type]
+				@ext__sent_dropped_frame[f.type] = true
+				g = Frame.new FrameTypes::DROPPED_FRAME, 0x00, 0, [f.type].pack('C')
+				send_frame g
+			end
+		end
+
+		def handle_dropped_frame f
+			raise ConnectionError.new(PROTOCOL_ERROR, "DROPPED_FRAME must be sent on stream 0, received #{f.sid}") if f.sid != 0
+			raise ConnectionError.new(PROTOCOL_ERROR, "DROPPED_FRAME payload must be exactly 1 byte, received #{f.payload.bytesize}") if f.payload.bytesize != 1
+			type = f.payload.bytes.first
+			@logger.info "peer dropped extension frame type 0x#{type.to_s 16}"
+			@ext__peer_dropped_frame[type] = true
 		end
 
 		# triggered when a completed HTTP request arrives
@@ -300,6 +350,13 @@ module RUBYH2
 			@request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, stream.body )
 		end
 
+		def strip_padding bytes
+			ints = bytes.bytes
+			pad_length = ints.shift
+			raise ConnectionError.new(PROTOCOL_ERROR, "Pad Length #{pad_length} exceeds frame payload size #{ints.count+1}") if pad_length > ints.count
+			ints[0..pad_length].pack('C*')
+		end
+
 		def handle_data f
 			raise ConnectionError.new(PROTOCOL_ERROR, "DATA must be sent on stream >0") if f.sid == 0
 
@@ -310,6 +367,7 @@ module RUBYH2
 			return if @goaway
 
 			bytes = f.payload
+			bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
 			# never run out of window space
 			g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
@@ -318,6 +376,47 @@ module RUBYH2
 			send_frame h
 
 			stream << bytes
+			emit_request f.sid, stream if f.flag? FLAG_END_STREAM
+		end
+
+		def handle_gzipped_data f
+			#raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA cannot be sent without SETTINGS_ACCEPT_GZIP_DATA") unless @ext__recv_gzip
+			if !@ext__recv_gzip
+				drop_frame f
+				return
+			end
+
+			raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA must be sent on stream >0") if f.sid == 0
+
+			stream = @streams[f.sid]
+			raise SemanticError.new("GZIPPED_DATA frame with invalid stream id #{f.sid}") unless stream
+			raise StreamError.new(STREAM_CLOSED, "GZIPPED_DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
+
+			return if @goaway
+
+			bytes = f.payload
+			bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
+
+			# never run out of window space
+			g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
+			send_frame g
+
+			inflated_bytes = nil
+			gunzip = Zlib::GzipReader.new(StringIO.new bytes)
+			begin
+				inflated_bytes = gunzip.read
+			rescue Zlib::Error => e
+				# bad gzip!
+				raise StreamError.new(DATA_ENCODING_ERROR, e.to_s)
+			ensure
+				no_gzip! if inflated_bytes.nil?
+			end
+
+			# note: only update the frame window if gunzip succeeddededd
+			h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [bytes.bytesize].pack('N')
+			send_frame h
+
+			stream << inflated_bytes
 			emit_request f.sid, stream if f.flag? FLAG_END_STREAM
 		end
 
@@ -331,7 +430,9 @@ module RUBYH2
 				raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by client must be odd, received #{f.sid}") if f.sid % 2 != 1
 				@streams[f.sid] = Stream.new(@default_window_size)
 				# read the header block
-				@hpack.parse_block(f.payload) do |k, v|
+				bytes = f.payload
+				bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
+				@hpack.parse_block(bytes) do |k, v|
 					@streams[f.sid][k] << v
 				end
 			end

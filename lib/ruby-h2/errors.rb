@@ -18,6 +18,8 @@ module RUBYH2
 		ENHANCE_YOUR_CALM   = 0xb
 		INADEQUATE_SECURITY = 0xc
 		HTTP_1_1_REQUIRED   = 0xd
+
+		DATA_ENCODING_ERROR = 0xf000_0000 # Non-standard
 	end
 
 	class GenericError < StandardError

@@ -14,6 +14,8 @@ module RUBYH2
 		MAX_FRAME_SIZE         = 0x5
 		MAX_HEADER_LIST_SIZE   = 0x6
 
+		ACCEPT_GZIPPED_DATA    = 0xf000 # Experimental
+
 		class << self
 
 			def frame_from pairs
