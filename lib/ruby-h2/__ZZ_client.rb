@@ -335,7 +335,7 @@ bytes = hpack.create_block({
 len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
-s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
+s.xmit( [len0,len1, 0x1, 0x01|0x04, 9].pack(HEADER_FORMAT)+bytes )
 say "WROTE HEADERS: GET /"
 half_close 9
 
@@ -354,11 +354,11 @@ bytes = hpack.create_block({
 len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
-s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
+s.xmit( [len0,len1, 0x1, 0x01|0x04, 11].pack(HEADER_FORMAT)+bytes )
 say "WROTE HEADERS: GET /padded"
 half_close 11
 
-sleep 0.5
+sleep 5
 
 bytes = [0,0x0].pack('NN') + 'Cya'
 len = bytes.bytesize

@@ -529,7 +529,8 @@ module RUBYH2
 		end
 
 		def handle_headers f
-			if @streams[f.sid]
+			stream = @streams[f.sid]
+			if stream
 				raise SemanticError.new("no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM #FIXME: malformed => StreamError:PROTOCOL_ERROR ?
 				raise StreamError.new(STREAM_CLOSED, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
 			else
@@ -576,7 +577,7 @@ module RUBYH2
 
 					when Settings::ACCEPT_GZIPPED_DATA
 						raise ConnectionError.new(PROTOCOL_ERROR, "ACCEPT_GZIPPED_DATA must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
-						@ext__send_gzip = (v == 1)
+						@ext__peer_gzip = (v == 1)
 					end
 				end
 				#send ACK

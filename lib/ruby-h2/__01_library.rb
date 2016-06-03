@@ -90,6 +90,7 @@ at_exit do
 	Thread.abort_on_exception = true
 	loop do
 		hclient = RUBYH2::HTTPPeer.new(Application.logger)
+		hclient.send_gzip! if Application.gzip?
 		hclient.accept_gzip! if Application.gzip?
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
