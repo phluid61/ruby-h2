@@ -611,7 +611,7 @@ module RUBYH2
 			raise ConnectionError.new(PROTOCOL_ERROR, "received GOAWAY on stream id #{f.sid}") unless f.sid == 0
 			# TODO
 			@goaway, error_code, debug_data = f.payload.unpack('NNa*')
-			@logger.info "received GOAWAY (last stream ID=#{@goaway}, error_code=0x#{error_code.to_s 16}"
+			@logger.info "received GOAWAY (last stream ID=#{@goaway}, error_code=0x#{error_code.to_s 16})"
 			@logger.info debug_data.inspect if debug_data && debug_data.bytesize > 0
 
 			shut_down
