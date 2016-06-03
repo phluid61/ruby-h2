@@ -22,6 +22,9 @@ s = TCPSocket.new 'localhost', 8888
 s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 #s.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 
+require 'zlib'
+require 'stringio'
+
 HEADER_FORMAT = 'CnCCN'
 HEADER_LENGTH = 9
 $buffer = ''
@@ -178,6 +181,19 @@ say "read #{bytes.bytesize} bytes" rescue nil
 								say " #{'%02X' % k} = #{v}"
 							end
 							say '---'
+						when 7
+							stream, error, message = frame[:payload].unpack('NNa*')
+							say '---'
+							say " last stream id: #{stream}"
+							say " error code:     #{error}"
+							say " debug data:     [#{message.bytesize}]"
+							say *message.each_byte.map{|b|'%02X' % b}.each_slice(8).each_slice(4).map{|q|q.map{|h|h.join ' '}.join '   '}
+							say '---'
+						when 0xf0 # GZIPPED_DATA
+							frame[:payload] = strip_padding frame[:payload] if (frame[:flags] & 0x8) == 0x8
+							gunzip = Zlib::GzipReader.new(StringIO.new frame[:payload])
+							say '---8<---', gunzip.read, '--->8---'
+							half_close frame[:sid] if (frame[:flags] & 0x1) == 0x1
 						end
 					end
 					say ''
@@ -293,6 +309,54 @@ len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
 say "WROTE HEADERS: GET /padded"
 half_close 7
+
+sleep 1
+
+# HTTP/2 SETTINGS
+bytes = [0xf000,1].pack('nN')
+len = bytes.bytesize
+len0 = len >> 16
+len1 = len & 0xFFFF
+s.xmit( [len0,len1, 0x4, 0x00, 0].pack(HEADER_FORMAT)+bytes )
+say "WROTE SETTINGS: ACCEPT_GZIP_DATA"
+
+sleep 1
+
+open 9
+# HEADERS (GET /padded)
+bytes = hpack.create_block({
+	':method' => 'GET',
+	':scheme' => 'http',
+	':path' => '/',
+	'host' => 'localhost',
+	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
+	'user-agent' => 'TestClient/1.0',
+})
+len = bytes.bytesize
+len0 = len >> 16
+len1 = len & 0xFFFF
+s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
+say "WROTE HEADERS: GET /"
+half_close 9
+
+sleep 0.5
+
+open 11
+# HEADERS (GET /padded)
+bytes = hpack.create_block({
+	':method' => 'GET',
+	':scheme' => 'http',
+	':path' => '/padded',
+	'host' => 'localhost',
+	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
+	'user-agent' => 'TestClient/1.0',
+})
+len = bytes.bytesize
+len0 = len >> 16
+len1 = len & 0xFFFF
+s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
+say "WROTE HEADERS: GET /padded"
+half_close 11
 
 sleep 0.5
 
