@@ -30,6 +30,7 @@ module RUBYH2
 			@status  = status
 			@headers = {}
 			@body    = String.new.b
+			@pad = false
 		end
 
 		attr_reader :stream
@@ -48,6 +49,16 @@ module RUBYH2
 		attr_reader :body
 		def << s
 			@body << s if s
+		end
+
+		def pad?
+			@pad
+		end
+		def pad!
+			@pad = true
+		end
+		def no_pad!
+			@pad = false
 		end
 	end
 

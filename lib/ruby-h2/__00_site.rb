@@ -12,3 +12,11 @@ get '/' do
 HTML
 end
 
+get '/padded' do |request, response|
+	response.pad!
+	<<HTML
+<!DOCTYPE html>
+<html lang="en"><head><title>Padded</title></head><body><h1>Padded</h1><p>This response should be padded.</p></body></html>
+HTML
+end
+

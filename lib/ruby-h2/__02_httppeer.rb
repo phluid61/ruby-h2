@@ -44,8 +44,10 @@ module RUBYH2
 			@max_frame_size = 16384
 			@max_streams = nil
 			@push_to_peer = true
-			@ext__send_gzip = false
-			@ext__recv_gzip = true
+			@ext__send_gzip = true  # are we config'd to send gzip data?
+			@ext__peer_gzip = false # is peer config'd to accept gzip data?
+			@ext__recv_gzip = true  # are we config'd to accept gzip data?
+			@ext__veto_gzip = false # set if peer doesn't gzip right
 			@ext__sent_dropped_frame = {}
 			@ext__peer_dropped_frame = {}
 			# other settings
@@ -138,6 +140,8 @@ module RUBYH2
 			if r.body.empty?
 				chunks.last[:flags] |= FLAG_END_STREAM
 			end
+			# pad out to %256 bytes if required
+			_pad chunks.last if r.pad?
 			# send the headers frame(s)
 			chunks.each do |chunk|
 				f = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
@@ -146,10 +150,65 @@ module RUBYH2
 
 			# create data
 			if !r.body.empty?
-				chunks = r.body.b.scan(/.{1,#{@max_frame_size}}/).map{|c| {flags: 0, bytes: c} }
+				chunks = []
+				if send_gzip?
+					type = FrameTypes::GZIPPED_DATA
+					bytes = r.body.b
+
+					until bytes.empty?
+						# binary search for biggest data chunk that fits when gzipped
+						left = 0
+						right = bytes.bytesize
+						maxright = right
+						best = nil
+						rest = bytes
+
+						loop do
+							gzipped = ''.b
+							gzip = Zlib::GzipWriter.new(StringIO.new gzipped)
+							gzip.write bytes[0...right]
+							gzip.close
+
+							rest = bytes[right..-1]
+
+							if gzipped.bytesize > @max_frame_size
+								# try a smaller sample
+								maxright = right
+								right = maxright - (maxright - left) / 2
+								# is this a good as we'll get?
+								break if right == left
+							elsif gzipped.bytesize == @max_frame_size
+								# perfect!
+								best = gzipped
+								break
+							else
+								# try a bigger sample
+								best = gzipped
+
+								left = right
+								right = maxright - (maxright - left) / 2
+								# is this a good as we'll get?
+								break if right == left
+							end
+						end
+						bytes = rest
+
+						# create chunk
+						chunk = {flags: 0, bytes: best}
+						# pad out to %256 bytes if required
+						_pad chunk if r.pad?
+						# add to list
+						chunks << chunk
+					end
+				else
+					type = FrameTypes::DATA
+					chunks = r.body.b.scan(/.{1,#{@max_frame_size}}/m).map{|c| {flags: 0, bytes: c} }
+					# pad out to %256 bytes if required
+					_pad chunks.last if r.pad?
+				end
 				chunks.last[:flags] |= FLAG_END_STREAM
 				chunks.each do |chunk|
-					f = Frame.new FrameTypes::DATA, chunk[:flags], r.stream, chunk[:bytes]
+					f = Frame.new type, chunk[:flags], r.stream, chunk[:bytes]
 					send_frame f
 				end
 			end
@@ -164,26 +223,74 @@ module RUBYH2
 			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION
 		end
 
-		# are we configured to accept GZIPPED_DATA frames from this peer?
+		# Are we configured to accept GZIPPED_DATA frames from this peer?
+		# Takes into account peer's apparent ability to correctly send gzip.
 		def accept_gzip?
+			return if @ext__veto_gzip
 			@ext__recv_gzip
 		end
 		# tell the peer we'll accept GZIPPED_DATA frames
 		def accept_gzip!
+			return if @ext__veto_gzip
 			if !@ext__recv_gzip
 				send_frame Settings.frame_from({Settings::ACCEPT_GZIPPED_DATA => 1})
 				@ext__recv_gzip = true
 			end
 		end
 		# tell the peer we don't accept GZIPPED_DATA frames
-		def no_gzip!
+		def no_accept_gzip!
+			return if @ext__veto_gzip
 			if @ext__recv_gzip
 				send_frame Settings.frame_from({Settings::ACCEPT_GZIPPED_DATA => 0})
 				@ext__recv_gzip = false
 			end
 		end
 
+		# Are we configured to send GZIPPED_DATA frames to this peer?
+		# Takes into account peer's settings for receiving them.
+		def send_gzip?
+			return if !@ext__peer_gzip
+			@ext__send_gzip
+		end
+		# application lets us send GZIPPED_DATA frames to this peer
+		def send_gzip!
+			if !@ext__send_gzip
+				@ext__send_gzip = true
+			end
+		end
+		# application won't let us send GZIPPED_DATA frames to this peer
+		def no_send_gzip!
+			if @ext__send_gzip
+				@ext__send_gzip = false
+			end
+		end
+
 	private
+
+		def veto_gzip!
+			return if @ext__veto_gzip
+			if @ext__recv_gzip
+				send_frame Settings.frame_from({Settings::ACCEPT_GZIPPED_DATA => 0})
+				@ext__veto_gzip = true
+			end
+		end
+
+		def _pad hash, modulus=256
+			len = hash[:bytes].bytesize
+			rem = (modulus - (len % modulus)) - 1
+			# don't overflow the frame!
+			if len + rem > @max_frame_size
+				rem = @max_frame_size - len - 1
+			end
+			if rem >= 0
+				padlen = [rem].pack('C')
+				padding = ''
+				padding = [0].pack('C') * rem if rem > 0
+				hash[:flags] |= FLAG_PADDED
+				hash[:bytes] = padlen + hash[:bytes] + padding
+			end
+			hash
+		end
 
 		def _write sock, bytes
 			bytes.force_encoding Encoding::BINARY
@@ -353,8 +460,9 @@ module RUBYH2
 		def strip_padding bytes
 			ints = bytes.bytes
 			pad_length = ints.shift
-			raise ConnectionError.new(PROTOCOL_ERROR, "Pad Length #{pad_length} exceeds frame payload size #{ints.count+1}") if pad_length > ints.count
-			ints[0..pad_length].pack('C*')
+			rst_length = ints.length
+			raise ConnectionError.new(PROTOCOL_ERROR, "Pad Length #{pad_length} exceeds frame payload size #{rst_length+1}") if pad_length > rst_length
+			ints[0...rst_length-pad_length].pack('C*')
 		end
 
 		def handle_data f
@@ -380,8 +488,8 @@ module RUBYH2
 		end
 
 		def handle_gzipped_data f
-			#raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA cannot be sent without SETTINGS_ACCEPT_GZIP_DATA") unless @ext__recv_gzip
-			if !@ext__recv_gzip
+			#raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA cannot be sent without SETTINGS_ACCEPT_GZIP_DATA") unless accept_gzip
+			if !accept_gzip?
 				drop_frame f
 				return
 			end
@@ -409,7 +517,7 @@ module RUBYH2
 				# bad gzip!
 				raise StreamError.new(DATA_ENCODING_ERROR, e.to_s)
 			ensure
-				no_gzip! if inflated_bytes.nil?
+				veto_gzip! if inflated_bytes.nil?
 			end
 
 			# note: only update the frame window if gunzip succeeddededd
@@ -465,6 +573,10 @@ module RUBYH2
 						@max_frame_size = v
 					when Settings::MAX_HEADER_LIST_SIZE
 						# FIXME ???
+
+					when Settings::ACCEPT_GZIPPED_DATA
+						raise ConnectionError.new(PROTOCOL_ERROR, "ACCEPT_GZIPPED_DATA must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
+						@ext__send_gzip = (v == 1)
 					end
 				end
 				#send ACK

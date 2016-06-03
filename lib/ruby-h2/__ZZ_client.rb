@@ -100,6 +100,26 @@ end
 
 $ignore_EOFError = false
 
+def strip_padding bytes
+	ints = bytes.bytes
+	pad_length = ints.shift
+	rst_length = ints.length
+	raise "Pad Length #{pad_length} exceeds frame payload size #{rst_length+1}" if pad_length > rst_length
+	ints[0...rst_length-pad_length].pack('C*')
+end
+def hexify f
+	hex = []
+	cursor = 0x1
+	while f > 0
+		if f & cursor == cursor
+			f ^= cursor
+			hex << ('0x%02X' % cursor)
+		end
+		cursor <<= 1
+	end
+	return hex.join '|'
+end
+
 reader = Thread.new do
 	begin
 		catch :EOF do
@@ -112,17 +132,19 @@ puts "read #{bytes.bytesize} bytes" rescue nil
 				parse_frames(bytes) do |frame|
 					puts "RECEIVED FRAME:"
 					puts "   type:   #{frame[:type].to_s 16} #{$frame_name[frame[:type]]}"
-					puts "   flags:  #{frame[:flags].to_s 16}"
+					puts "   flags:  #{frame[:flags].to_s 16} #{hexify frame[:flags]}"
 					puts "   stream: #{frame[:sid]}"
 					puts "   payload: [#{frame[:payload].bytesize}]"
 					if frame[:payload].bytesize > 0
 						puts *frame[:payload].each_byte.map{|b|'%02X' % b}.each_slice(8).each_slice(4).map{|q|q.map{|h|h.join ' '}.join '   '}
 						case frame[:type]
 						when 0
+							frame[:payload] = strip_padding frame[:payload] if (frame[:flags] & 0x8) == 0x8
 							puts '---8<---', frame[:payload], '--->8---'
 							half_close frame[:sid] if (frame[:flags] & 0x1) == 0x1
 						when 1
 							# parse headers
+							frame[:payload] = strip_padding frame[:payload] if (frame[:flags] & 0x8) == 0x8
 							puts '---'
 							hpack.parse_block(frame[:payload]) do |k, v|
 								puts " #{k}: #{v}"
@@ -153,6 +175,8 @@ puts "read #{bytes.bytesize} bytes" rescue nil
 	end
 end
 Thread.pass
+
+#---
 
 # HTTP/2 SETTINGS
 s.xmit [0,0, 0x4, 0x00, 0].pack(HEADER_FORMAT)
@@ -233,6 +257,25 @@ len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x0, 0x01, 5].pack(HEADER_FORMAT)+payload )
 puts "WROTE DATA"
 half_close 5
+
+sleep 0.5
+
+open 7
+# HEADERS (GET /padded)
+bytes = hpack.create_block({
+	':method' => 'GET',
+	':scheme' => 'http',
+	':path' => '/padded',
+	'host' => 'localhost',
+	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
+	'user-agent' => 'TestClient/1.0',
+})
+len = bytes.bytesize
+len0 = len >> 16
+len1 = len & 0xFFFF
+s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
+puts "WROTE HEADERS"
+half_close 7
 
 sleep 0.5
 

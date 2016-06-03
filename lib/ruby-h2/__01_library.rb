@@ -9,6 +9,8 @@ class ApplicationClass
 	def initialize port
 		@port = port
 
+		@gzip = false
+
 		@logger = Logger.new STDERR
 		@logger.progname = 'ruby-h2'
 		@logger.datetime_format = '%Y-%m-%d %H:%M:%S'
@@ -18,6 +20,13 @@ class ApplicationClass
 	end
 	attr_accessor :port
 	attr_accessor :logger
+
+	def gzip?
+		@gzip
+	end
+	def gzip= gz
+		@gzip = !!gz
+	end
 
 	def get path, &proc
 		@_get[path] = proc
@@ -81,6 +90,7 @@ at_exit do
 	Thread.abort_on_exception = true
 	loop do
 		hclient = RUBYH2::HTTPPeer.new(Application.logger)
+		hclient.accept_gzip! if Application.gzip?
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
 		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
