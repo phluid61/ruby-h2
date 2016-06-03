@@ -1,6 +1,22 @@
 # encoding: BINARY
 # vim: ts=2:sts=2:sw=2
 
+### DEBUG FUNCTIONS
+require 'thread'
+$ESC = "\x1B".b
+$say_mutex = Mutex.new
+module Kernel
+	def say *strs
+		$say_mutex.synchronize {
+			if Thread.current[:reader]
+				strs.each{|s| puts "#{$ESC}[36m#{s}#{$ESC}[0m" }
+			else
+				strs.each{|s| puts "#{$ESC}[35m#{s}#{$ESC}[0m" }
+			end
+		}
+	end
+end
+
 require 'socket'
 s = TCPSocket.new 'localhost', 8888
 s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
@@ -12,7 +28,7 @@ $buffer = ''
 def parse_frames bytes, &block
 	until bytes.empty?
 		if ($buffer+bytes).bytesize < HEADER_LENGTH
-			puts "PARTIAL FRAME HEADER: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}"
+			say "PARTIAL FRAME HEADER: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}"
 			$buffer << bytes
 			return
 		end
@@ -22,7 +38,7 @@ def parse_frames bytes, &block
 		len = (len0 << 16) | len1
 
 		if rest.bytesize < len
-			puts "PARTIAL FRAME: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}"
+			say "PARTIAL FRAME: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}"
 			$buffer << bytes
 			return
 		else
@@ -50,19 +66,19 @@ end
 
 PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 preader = Thread.new do
+	Thread.current[:reader] = true
 	preface = ''
 	while preface.bytesize < 24
 		bytes = s.readpartial(24 - preface.bytesize)
 		preface << bytes
-		puts "PARTIAL PREFACE: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}" if preface.bytesize < 24
+		say "PARTIAL PREFACE: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}" if preface.bytesize < 24
 	end
 	if bytes == PREFACE
-		puts "RECEIVED PREFACE"
+		say "RECEIVED PREFACE"
 	else
 		raise
 	end
 end
-Thread.pass
 s.xmit PREFACE
 preader.join
 
@@ -87,13 +103,13 @@ def half_close i
 		$_open[i] -= 1
 		ded = true if $_open[i] == 0
 	}
-	puts "stream #{i} is closed" if ded
+	say "stream #{i} is closed" if ded
 end
 def close i
 	$_open_sem.synchronize {
 		$_open[i] = 0
 	}
-	puts "stream #{i} is closed"
+	say "stream #{i} is closed"
 end
 
 #---
@@ -121,57 +137,58 @@ def hexify f
 end
 
 reader = Thread.new do
+	Thread.current[:reader] = true
 	begin
 		catch :EOF do
 			hpack = RUBYH2::HPack.new
 			loop do
-puts "reading..."
+say "reading..."
 				bytes = s.readpartial(4*1024*1024)
-puts "read #{bytes.bytesize} bytes" rescue nil
+say "read #{bytes.bytesize} bytes" rescue nil
 				throw :EOF if bytes.nil? or bytes.empty?
 				parse_frames(bytes) do |frame|
-					puts "RECEIVED FRAME:"
-					puts "   type:   #{frame[:type].to_s 16} #{$frame_name[frame[:type]]}"
-					puts "   flags:  #{frame[:flags].to_s 16} #{hexify frame[:flags]}"
-					puts "   stream: #{frame[:sid]}"
-					puts "   payload: [#{frame[:payload].bytesize}]"
+					say "RECEIVED FRAME:"
+					say "   type:   #{frame[:type].to_s 16} #{$frame_name[frame[:type]]}"
+					say "   flags:  #{frame[:flags].to_s 16} #{hexify frame[:flags]}"
+					say "   stream: #{frame[:sid]}"
+					say "   payload: [#{frame[:payload].bytesize}]"
 					if frame[:payload].bytesize > 0
-						puts *frame[:payload].each_byte.map{|b|'%02X' % b}.each_slice(8).each_slice(4).map{|q|q.map{|h|h.join ' '}.join '   '}
+						say *frame[:payload].each_byte.map{|b|'%02X' % b}.each_slice(8).each_slice(4).map{|q|q.map{|h|h.join ' '}.join '   '}
 						case frame[:type]
 						when 0
 							frame[:payload] = strip_padding frame[:payload] if (frame[:flags] & 0x8) == 0x8
-							puts '---8<---', frame[:payload], '--->8---'
+							say '---8<---', frame[:payload], '--->8---'
 							half_close frame[:sid] if (frame[:flags] & 0x1) == 0x1
 						when 1
 							# parse headers
 							frame[:payload] = strip_padding frame[:payload] if (frame[:flags] & 0x8) == 0x8
-							puts '---'
+							say '---'
 							hpack.parse_block(frame[:payload]) do |k, v|
-								puts " #{k}: #{v}"
+								say " #{k}: #{v}"
 							end
-							puts '---'
+							say '---'
 							half_close frame[:sid] if (frame[:flags] & 0x1) == 0x1
 						when 3
 							close frame[:sid]
 						when 4
 							bytes = frame[:payload].dup.b
-							puts '---'
+							say '---'
 							until bytes.nil? or bytes.empty?
 								k, v, bytes = bytes.unpack 'nNa*'
-								puts " #{'%02X' % k} = #{v}"
+								say " #{'%02X' % k} = #{v}"
 							end
-							puts '---'
+							say '---'
 						end
 					end
-					puts ''
+					say ''
 				end
 				Thread.pass
 			end#loop
 		end#catch
 	rescue IOError => x
-		STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"} unless $ignore_EOFError
+		STDERR.say "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"} unless $ignore_EOFError
 	rescue Exception => x
-		STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
+		STDERR.say "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
 	end
 end
 Thread.pass
@@ -180,11 +197,11 @@ Thread.pass
 
 # HTTP/2 SETTINGS
 s.xmit [0,0, 0x4, 0x00, 0].pack(HEADER_FORMAT)
-puts "WROTE SETTINGS"
+say "WROTE SETTINGS"
 
 # test ping1
 s.xmit( [0,8, 0x6, 0x00, 0].pack(HEADER_FORMAT)+'UUUUUUUU' )
-puts "SENT PING"
+say "SENT PING: UUUUUUUU"
 
 hpack = RUBYH2::HPack.new
 
@@ -203,12 +220,12 @@ len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x1, 0x01|0x04, 1].pack(HEADER_FORMAT)+bytes )
-puts "WROTE HEADERS"
+say "WROTE HEADERS: GET /"
 half_close 1
 
 # test ping2
 s.xmit( [0,8, 0x6, 0x00, 0].pack(HEADER_FORMAT)+'33333333' )
-puts "SENT PING"
+say "SENT PING: 33333333"
 
 sleep 1
 
@@ -227,7 +244,7 @@ len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x1, 0x01|0x04, 3].pack(HEADER_FORMAT)+bytes )
-puts "WROTE HEADERS"
+say "WROTE HEADERS: GET /nonesuch"
 half_close 3
 
 sleep 0.5
@@ -249,13 +266,13 @@ len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x1, 0x04, 5].pack(HEADER_FORMAT)+bytes )
-puts "WROTE HEADERS"
+say "WROTE HEADERS:  POST /"
 # BODY (POST /)
 len = payload.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x0, 0x01, 5].pack(HEADER_FORMAT)+payload )
-puts "WROTE DATA"
+say "WROTE DATA: foobar"
 half_close 5
 
 sleep 0.5
@@ -274,7 +291,7 @@ len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x1, 0x01|0x04, 7].pack(HEADER_FORMAT)+bytes )
-puts "WROTE HEADERS"
+say "WROTE HEADERS: GET /padded"
 half_close 7
 
 sleep 0.5
@@ -284,6 +301,7 @@ len = bytes.bytesize
 len0 = len >> 16
 len1 = len & 0xFFFF
 s.xmit( [len0,len1, 0x7, 0x00, 0].pack(HEADER_FORMAT)+bytes )
+say "WROTE GOAWAY: Cya"
 
 sleep 5
 $ignore_EOFError = true
