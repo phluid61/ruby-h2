@@ -97,13 +97,14 @@ at_exit do
 	server = TCPServer.new Application.port
 	if Application.https?
 		begin
-			ctx = OpenSSL::SSL::SSLContext.new :TLSv1
-			ctx.alpn_protocols = %w[h2]
-			ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
+			ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_server
+#			ctx.alpn_protocols = %w[h2]
+#			ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
 			# openssl req -x509 -newkey rsa:2048 -keyout private.key -out certificate.crt -days 3650 -nodes
 			ctx.key = OpenSSL::PKey::RSA.new(File.read 'private.key')
 			ctx.cert = OpenSSL::X509::Certificate.new(File.read 'certificate.crt')
 			server = OpenSSL::SSL::SSLServer.new server, ctx
+			server.start_immediately = true
 		rescue Exception => e
 			Application.logger.error "unable to start OpenSSL: #{e}"
 			exit
@@ -117,10 +118,14 @@ at_exit do
 		hclient.accept_gzip! if Application.gzip?
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
-		socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
-		#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
-		Application.logger.info "client connected from #{socket.remote_address.inspect_sockaddr}"
+		if Application.https?
+			Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr}"
+		else
+			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
+			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
+			Application.logger.info "client connected from #{socket.remote_address.inspect_sockaddr}"
+		end
 		threads.spawn do
 			hclient.wrap socket
 		end

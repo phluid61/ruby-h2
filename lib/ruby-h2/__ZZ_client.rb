@@ -1,6 +1,8 @@
 # encoding: BINARY
 # vim: ts=2:sts=2:sw=2
 
+$USE_HTTPS = true
+
 ### DEBUG FUNCTIONS
 require 'thread'
 $ESC = "\x1B".b
@@ -21,6 +23,15 @@ require 'socket'
 s = TCPSocket.new 'localhost', 8888
 s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 #s.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
+
+if $USE_HTTPS
+	require 'openssl'
+	ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_client
+	ctx.verify_callback = lambda {|pverify_ok, store_context| true } # security!
+	s = OpenSSL::SSL::SSLSocket.new s, ctx
+	s.sync_close = true
+	s.connect
+end
 
 require 'zlib'
 require 'stringio'
