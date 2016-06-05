@@ -84,10 +84,18 @@ end
 at_exit do
 	require 'threadpuddle'
 	require 'socket'
+	require 'openssl'
 	threads = ThreadPuddle.new 100
 	server = TCPServer.new Application.port
 	Application.logger.info "listening on port #{Application.port}"
 	Thread.abort_on_exception = true
+	###
+	### https://blog.udemy.com/ruby-openssl/
+	###
+	if true
+		key_pem = File.read 'private.key'
+		key = OpenSSL::PKey::RSA.new key_pem
+	end
 	loop do
 		hclient = RUBYH2::HTTPPeer.new(Application.logger)
 		hclient.send_gzip! if Application.gzip?
