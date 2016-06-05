@@ -390,7 +390,7 @@ module RUBYH2
 				when FrameTypes::CONTINUATION
 				else
 					# FIXME
-					@logger.info "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
+					@logger.warn "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
 					return
 				end
 			end
