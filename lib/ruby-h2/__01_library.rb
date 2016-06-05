@@ -102,7 +102,7 @@ at_exit do
 			ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
 			# openssl req -x509 -newkey rsa:2048 -keyout private.key -out certificate.crt -days 3650 -nodes
 			ctx.key = OpenSSL::PKey::RSA.new(File.read 'private.key')
-			ctx.cert = OpenSSL::X509::Certificate.new.new(File.read 'certificate.crt')
+			ctx.cert = OpenSSL::X509::Certificate.new(File.read 'certificate.crt')
 			server = OpenSSL::SSL::SSLServer.new server, ctx
 		rescue Exception => e
 			Application.logger.error "unable to start OpenSSL: #{e}"
