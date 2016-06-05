@@ -8,6 +8,7 @@ require 'logger'
 class ApplicationClass
 	def initialize port
 		@port = port
+		@https = true
 
 		@gzip = false
 
@@ -20,6 +21,13 @@ class ApplicationClass
 	end
 	attr_accessor :port
 	attr_accessor :logger
+
+	def https?
+		@https
+	end
+	def https= h
+		@https = !!h
+	end
 
 	def gzip?
 		@gzip
@@ -87,15 +95,22 @@ at_exit do
 	require 'openssl'
 	threads = ThreadPuddle.new 100
 	server = TCPServer.new Application.port
+	if Application.https?
+		begin
+			ctx = OpenSSL::SSL::SSLContext.new :TLSv1
+			ctx.alpn_protocols = %w[h2]
+			ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
+			# openssl req -x509 -newkey rsa:2048 -keyout private.key -out certificate.crt -days 3650 -nodes
+			ctx.key = OpenSSL::PKey::RSA.new(File.read 'private.key')
+			ctx.cert = OpenSSL::X509::Certificate.new.new(File.read 'certificate.crt')
+			server = OpenSSL::SSL::SSLServer.new server, ctx
+		rescue Exception => e
+			Application.logger.error "unable to start OpenSSL: #{e}"
+			exit
+		end
+	end
 	Application.logger.info "listening on port #{Application.port}"
 	Thread.abort_on_exception = true
-	###
-	### https://blog.udemy.com/ruby-openssl/
-	###
-	if true
-		key_pem = File.read 'private.key'
-		key = OpenSSL::PKey::RSA.new key_pem
-	end
 	loop do
 		hclient = RUBYH2::HTTPPeer.new(Application.logger)
 		hclient.send_gzip! if Application.gzip?

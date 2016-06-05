@@ -4,6 +4,7 @@
 require_relative '__01_library'
 
 Application.port = 8888
+Application.https = true
 
 get '/' do
 	<<HTML
