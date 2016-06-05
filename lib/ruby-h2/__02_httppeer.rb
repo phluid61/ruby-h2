@@ -95,7 +95,11 @@ module RUBYH2
 					nil
 				end
 				if bytes.nil? or bytes.empty?
-					@logger.info "client disconnected from #{s.remote_address.inspect_sockaddr}"
+					if s.is_a? OpenSSL::SSL::SSLSocket
+						@logger.info "client disconnected from #{s.io.remote_address.inspect_sockaddr}"
+					else
+						@logger.info "client disconnected from #{s.remote_address.inspect_sockaddr}"
+					end
 					break
 				end
 				dsil << bytes

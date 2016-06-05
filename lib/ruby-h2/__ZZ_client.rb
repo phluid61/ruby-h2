@@ -212,7 +212,7 @@ say "read #{bytes.bytesize} bytes" rescue nil
 				Thread.pass
 			end#loop
 		end#catch
-	rescue IOError => x
+	rescue IOError, Errno::EBADF => x
 		STDERR.say "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"} unless $ignore_EOFError
 	rescue Exception => x
 		STDERR.say "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
