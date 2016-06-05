@@ -21,8 +21,6 @@ end
 
 require 'socket'
 s = TCPSocket.new 'localhost', 8888
-s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-#s.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 
 if $USE_HTTPS
 	require 'openssl'
@@ -31,6 +29,9 @@ if $USE_HTTPS
 	s = OpenSSL::SSL::SSLSocket.new s, ctx
 	s.sync_close = true
 	s.connect
+else
+	s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+	#s.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 end
 
 require 'zlib'
