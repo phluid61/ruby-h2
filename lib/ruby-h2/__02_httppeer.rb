@@ -148,8 +148,8 @@ module RUBYH2
 			_pad chunks.last if r.pad?
 			# send the headers frame(s)
 			chunks.each do |chunk|
-				f = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
-				send_frame f
+				g = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
+				send_frame g
 			end
 
 			# create data
@@ -212,8 +212,8 @@ module RUBYH2
 				end
 				chunks.last[:flags] |= FLAG_END_STREAM
 				chunks.each do |chunk|
-					f = Frame.new type, chunk[:flags], r.stream, chunk[:bytes]
-					send_frame f
+					g = Frame.new type, chunk[:flags], r.stream, chunk[:bytes]
+					send_frame g
 				end
 			end
 
@@ -224,7 +224,7 @@ module RUBYH2
 		# returns truthy if the given frame carries HTTP semantics
 		# (so has to be sent in order)
 		def semantic_frame? f
-			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION
+			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION || f.type == FrameType::GZIPPED_DATA
 		end
 
 		# Are we configured to accept GZIPPED_DATA frames from this peer?
@@ -324,12 +324,12 @@ module RUBYH2
 			t1.join
 		end
 
-		def send_frame f, is_first_settings=false
+		def send_frame g, is_first_settings=false
 			if is_first_settings
 				# Unset @first_frame_out and transmit said first frame, atomically
 				@send_lock.synchronize do
 					@first_frame_out = false
-					_do_send_frame f
+					_do_send_frame g
 				end
 			else
 				# FIXME: this is horrible
@@ -343,36 +343,36 @@ module RUBYH2
 				end
 				# Actually transmit the frame, atomically.
 				@send_lock.synchronize do
-					_do_send_frame f
+					_do_send_frame g
 				end
 			end
 		end
 
-		def _do_send_frame f
-			if !semantic_frame? f
-				@sil << f
-			elsif f.sid == 0
+		def _do_send_frame g
+			if !semantic_frame? g
+				@sil << g
+			elsif g.sid == 0
 				# FIXME: assumes .type != DATA, etc.
-				@sil << f
+				@sil << g
 			else
-				s = @streams[f.sid]
-				s = @streams[f.sid] = Stream.new(@default_window_size) if !s
-				q = @window_queue[f.sid]
+				s = @streams[g.sid]
+				s = @streams[g.sid] = Stream.new(@default_window_size) if !s
+				q = @window_queue[g.sid]
 				if q && !q.empty?
 					# there's a queue; wait for a WINDOW_UPDATE
-					q << f
-				elsif f.type == FrameTypes::DATA
-					b = f.payload_size
+					q << g
+				elsif g.type == FrameTypes::DATA
+					b = g.payload_size
 					if @window_size >= b && s.window_size >= b
 						@window_size -= b
 						s.window_size -= b
-						@sil << f
+						@sil << g
 					else
-						@window_queue[f.sid] ||= []
-						@window_queue[f.sid] << f
+						@window_queue[g.sid] ||= []
+						@window_queue[g.sid] << g
 					end
 				else
-					@sil << f
+					@sil << g
 				end
 			end
 		end
