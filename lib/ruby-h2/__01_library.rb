@@ -41,7 +41,7 @@ class ApplicationClass
 	end
 
 	def handle_request r, c
-		@logger.info "in request_hander #{r.inspect}"
+		@logger.debug "in request_hander #{r.inspect}"
 		q = RUBYH2::HTTPResponse.new r.stream
 		begin
 			case r.method.upcase
