@@ -98,8 +98,12 @@ at_exit do
 	if Application.https?
 		begin
 			ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_server
-#			ctx.alpn_protocols = %w[h2]
-#			ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
+			if ctx.respond_to? :alpn_protocols=
+				ctx.alpn_protocols = %w[h2]
+				ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
+			else
+				Application.logger.warn "OpenSSL version doesn't support ALPN"
+			end
 			# openssl req -x509 -newkey rsa:2048 -keyout private.key -out certificate.crt -days 3650 -nodes
 			ctx.key = OpenSSL::PKey::RSA.new(File.read 'private.key')
 			ctx.cert = OpenSSL::X509::Certificate.new(File.read 'certificate.crt')
