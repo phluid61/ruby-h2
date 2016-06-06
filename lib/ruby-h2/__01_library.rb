@@ -122,8 +122,8 @@ at_exit do
 		hclient.accept_gzip! if Application.gzip?
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
-		if Application.https?
-			Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr}[#{socket.ssl_version}]"
+		if socket.is_a? OpenSSL::SSL::SSLSocket
+			Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
 		else
 			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
