@@ -224,7 +224,7 @@ module RUBYH2
 		# returns truthy if the given frame carries HTTP semantics
 		# (so has to be sent in order)
 		def semantic_frame? f
-			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION || f.type == FrameType::GZIPPED_DATA
+			f.type == FrameTypes::DATA || f.type == FrameTypes::HEADERS || f.type == FrameTypes::CONTINUATION || f.type == FrameTypes::GZIPPED_DATA
 		end
 
 		# Are we configured to accept GZIPPED_DATA frames from this peer?
