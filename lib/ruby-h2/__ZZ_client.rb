@@ -26,6 +26,11 @@ if $USE_HTTPS
 	require 'openssl'
 	ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_client
 	ctx.verify_callback = lambda {|pverify_ok, store_context| true } # security!
+	if ctx.respond_to? :alpn_protocols=
+		ctx.alpn_protocols = %w[h2]
+	else
+		Application.logger.warn "OpenSSL version doesn't support ALPN"
+	end
 	s = OpenSSL::SSL::SSLSocket.new s, ctx
 	s.sync_close = true
 	s.connect

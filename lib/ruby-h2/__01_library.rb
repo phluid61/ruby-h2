@@ -98,8 +98,7 @@ at_exit do
 	if Application.https?
 		begin
 			ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_server
-			if ctx.respond_to? :alpn_protocols=
-				ctx.alpn_protocols = %w[h2]
+			if ctx.respond_to? :alpn_select_cb=
 				ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
 			else
 				Application.logger.warn "OpenSSL version doesn't support ALPN"
@@ -123,7 +122,11 @@ at_exit do
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
 		if socket.is_a? OpenSSL::SSL::SSLSocket
-			Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
+			if socket.respond_to? :alpn_protocol
+				Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
+			else
+				Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
+			end
 		else
 			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
