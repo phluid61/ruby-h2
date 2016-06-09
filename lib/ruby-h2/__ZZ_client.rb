@@ -29,9 +29,14 @@ if $USE_HTTPS
 	if ctx.respond_to? :alpn_protocols=
 		ctx.alpn_protocols = %w[h2]
 	else
-		Application.logger.warn "OpenSSL version doesn't support ALPN"
+		STDERR.puts "OpenSSL version doesn't support ALPN"
 	end
 	s = OpenSSL::SSL::SSLSocket.new s, ctx
+	if s.respond_to? :hostname=
+		s.hostname = 'localhost'
+	else
+		STDERR.puts "OpenSSL version doesn't support SNI"
+	end
 	s.sync_close = true
 	s.connect
 else
