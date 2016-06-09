@@ -103,6 +103,11 @@ at_exit do
 			else
 				Application.logger.warn "OpenSSL version doesn't support ALPN"
 			end
+			if ctx.respond_to? :servername_cb=
+				ctx.servername_cb = lambda {|ary| s,h = ary; s.context }
+			else
+				Application.logger.warn "OpenSSL version doesn't support SNI"
+			end
 			# openssl req -x509 -newkey rsa:2048 -keyout private.key -out certificate.crt -days 3650 -nodes
 			ctx.key = OpenSSL::PKey::RSA.new(File.read 'private.key')
 			ctx.cert = OpenSSL::X509::Certificate.new(File.read 'certificate.crt')
@@ -139,7 +144,7 @@ at_exit do
 				hclient.wrap socket
 			rescue Exception => e
 				Application.logger.error "error in client #{sock_desc}: #{e.class.name}: #{e}"
-				STDERR.puts *e.backtrace.map{|bt|"\t#{bt}"}
+				STDERR.puts "#{e.class.name}: #{e}", *e.backtrace.map{|bt|"\t#{bt}"}
 			end
 		end
 	end
