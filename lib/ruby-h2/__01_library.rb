@@ -114,27 +114,33 @@ at_exit do
 		end
 	end
 	Application.logger.info "listening on port #{Application.port}"
-	Thread.abort_on_exception = true
 	loop do
 		hclient = RUBYH2::HTTPPeer.new(Application.logger)
 		hclient.send_gzip! if Application.gzip?
 		hclient.accept_gzip! if Application.gzip?
 		hclient.on_request {|r| Application.handle_request r, hclient }
 		socket = server.accept
+		sock_desc = nil
 		if socket.is_a? OpenSSL::SSL::SSLSocket
 			if socket.respond_to? :alpn_protocol
-				Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
+				sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
 			else
-				Application.logger.info "client connected from #{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
+				sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
 			end
 		else
 			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
-			Application.logger.info "client connected from #{socket.remote_address.inspect_sockaddr}"
+			sock_desc = "#{socket.remote_address.inspect_sockaddr}"
 		end
-		threads.spawn do
-			hclient.wrap socket
+		Application.logger.info "client connected from #{sock_desc}"
+		threads.spawn(sock_desc) do |sock_desc|
+			begin
+				hclient.wrap socket
+			rescue Exception => e
+				Application.logger.error "error in client #{sock_desc}: #{e.class.name}: #{e}"
+				STDERR.puts *e.backtrace.map{|bt|"\t#{bt}"}
+			end
 		end
 	end
 end
