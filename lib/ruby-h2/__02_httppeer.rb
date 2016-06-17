@@ -84,7 +84,7 @@ module RUBYH2
 		#   http_client.wrap server.accept
 		#
 		def wrap s
-			@sil = FrameSerialiser.new {|b| _write s, b }
+			@sil = FrameSerialiser.new {|b| _write s, b rescue nil }
 			dsil = FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s

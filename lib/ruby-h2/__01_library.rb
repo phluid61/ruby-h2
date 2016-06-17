@@ -105,6 +105,11 @@ at_exit do
 	if Application.https?
 		begin
 			ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_server
+			#ctx.ciphers = 'TLSv1.2:!aNULL:!eNULL'
+			#ctx.ciphers = '+ECDHE-RSA-AES128-GCM-SHA256:HIGH:!ADH:!SSLv2:!RC4:!aNULL:+3DES';
+			#ctx.ciphers = 'ECDHE-RSA-AES128-GCM-SHA256';
+			ctx.ciphers = 'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH';
+p *ctx.ciphers
 			if ctx.respond_to? :alpn_select_cb=
 				ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
 			else
@@ -139,6 +144,7 @@ at_exit do
 			else
 				sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
 			end
+			p socket.cipher
 		else
 			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
