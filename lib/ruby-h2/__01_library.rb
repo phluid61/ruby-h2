@@ -60,6 +60,11 @@ class ApplicationClass
 <html lang="en"><head><title>Not Found</title></head><body><h1>Not Found</h1><p>Resource <tt>#{r.path}</tt> not found.</p></body></html>
 HTML
 				end
+				# force certain behaviours
+				q['content-length'] = q.body.bytesize
+				if r.method.upcase == 'HEAD'
+					q.instance_variable_set :@body, ''
+				end
 			else
 					q = RUBYH2::HTTPResponse.new r.stream #...
 					q.status = 405
@@ -68,6 +73,7 @@ HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
 HTML
+				q['content-length'] = q.body.bytesize
 			end
 		rescue Exception => x
 			STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
@@ -78,6 +84,7 @@ HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Internal Server Error</title></head><body><h1>Internal Server Error</h1><p>An error occurred while attempting to handle your request.</p></body></html>
 HTML
+			q['content-length'] = q.body.bytesize
 		end
 		c.deliver q
 	end
