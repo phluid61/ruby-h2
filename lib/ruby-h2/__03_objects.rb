@@ -39,7 +39,7 @@ module RUBYH2
 
 		attr_reader :headers
 		def []= h, v
-			@headers[h] = v
+			@headers[h] = v.to_s
 		end
 
 		def [] h
