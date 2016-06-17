@@ -24,6 +24,7 @@ module RUBYH2
 		FLAG_ACK         = 0x1
 		FLAG_END_HEADERS = 0x4
 		FLAG_PADDED      = 0x8
+		FLAG_PRIORITY    = 0x20
 
 		include Error
 
@@ -87,7 +88,9 @@ module RUBYH2
 			dsil = FrameDeserialiser.new
 			dsil.on_frame {|f| @hook << f }
 			handle_prefaces s
-			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
+			#send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
+			#send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
+			send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => 0x4000}), true
 			loop do
 				bytes = begin
 					s.readpartial(4*1024*1024)
@@ -469,6 +472,13 @@ module RUBYH2
 			ints[0...rst_length-pad_length].pack('C*')
 		end
 
+		def extract_priority bytes
+			stream, weight, bytes = bytes.unpack('NCa*')
+			exclusive = stream & 0x80000000
+			stream &= 0x7fffffff
+			[{exclusive:exclusive, stream:stream, weight:weight}, bytes]
+		end
+
 		def handle_data f
 			raise ConnectionError.new(PROTOCOL_ERROR, "DATA must be sent on stream >0") if f.sid == 0
 
@@ -545,6 +555,8 @@ module RUBYH2
 				# read the header block
 				bytes = f.payload
 				bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
+				priority, bytes = extract_priority(bytes) if f.flag? FLAG_PRIORITY
+				# TODO: handle priority?
 				@hpack.parse_block(bytes) do |k, v|
 					@streams[f.sid][k] << v
 				end
