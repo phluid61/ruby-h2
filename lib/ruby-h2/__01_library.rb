@@ -86,6 +86,7 @@ HTML
 HTML
 			q['content-length'] = q.body.bytesize
 		end
+		q['date'] = Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z')
 		c.deliver q
 	end
 end
