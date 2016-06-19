@@ -110,7 +110,7 @@ at_exit do
 			#ctx.ciphers = '+ECDHE-RSA-AES128-GCM-SHA256:HIGH:!ADH:!SSLv2:!RC4:!aNULL:+3DES';
 			#ctx.ciphers = 'ECDHE-RSA-AES128-GCM-SHA256';
 			ctx.ciphers = 'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH';
-p *ctx.ciphers
+#p *ctx.ciphers
 			if ctx.respond_to? :alpn_select_cb=
 				ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
 			else

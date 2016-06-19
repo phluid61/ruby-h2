@@ -1,6 +1,36 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
+def hex(s) s.nil? ? 'nil' : "[#{s.bytesize}]:#{s.bytes.map{|b|'%02X' % b}.join '.'}" end
+def ansi(n, *args) args.each {|arg| puts "\x1B[#{n}m#{arg}\x1B[0m" }; end
+def black(*args)   ansi 30, *args; end
+def red(*args)     ansi 31, *args; end
+def green(*args)   ansi 32, *args; end
+def brown(*args)   ansi 33, *args; end
+def yellow(*args)  ansi 93, *args; end
+def blue(*args)    ansi 94, *args; end
+def magenta(*args) ansi 35, *args; end
+def cyan(*args)    ansi 36, *args; end
+def silver(*args)  ansi 37, *args; end
+def white(*args)   ansi 97, *args; end
+def flg(f)
+	s = "#{f.to_s 16}"
+	a = []
+	n = 1
+	while n < f
+		if (f & n) == n
+			a << ('%02X' % n)
+		end
+		n <<= 1
+	end
+	"#{f.to_s 16}[#{a.join '|'}]"
+end
+def frm(f)
+	t = RUBYH2::FrameTypes.constants.find {|t| f.type == RUBYH2::FrameTypes.const_get(t) }
+	t ||= f.type
+	"<#{t}: flags=#{flg f.flags} stream=#{f.sid} payload=#{hex f.payload}>"
+end
+
 require 'thread'
 require 'zlib'
 require 'stringio'
@@ -84,9 +114,13 @@ module RUBYH2
 		#   http_client.wrap server.accept
 		#
 		def wrap s
-			@sil = FrameSerialiser.new {|b| _write s, b rescue nil }
+			@sil = FrameSerialiser.new {|b|
+cyan "@sil: _write #{hex b}"
+_write s, b rescue nil }
 			dsil = FrameDeserialiser.new
-			dsil.on_frame {|f| @hook << f }
+			dsil.on_frame {|f|
+brown "dsil: received #{frm f}"
+@hook << f }
 			handle_prefaces s
 			#send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
 			#send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
@@ -105,6 +139,7 @@ module RUBYH2
 					end
 					break
 				end
+red "read #{hex bytes}"
 				dsil << bytes
 				Thread.pass
 			end
@@ -129,6 +164,7 @@ module RUBYH2
 			@shutdown_lock.synchronize {
 				raise "delivering response after GOAWAY" if @shutting_down # FIXME
 			}
+blue "deliver #{r.inspect}"
 
 			# create headers
 			all_headers = r.headers.dup
