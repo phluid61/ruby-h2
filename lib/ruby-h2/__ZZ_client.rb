@@ -90,22 +90,22 @@ def s.xmit bytes
 end
 
 PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-preader = Thread.new do
-	Thread.current[:reader] = true
-	preface = ''
-	while preface.bytesize < 24
-		bytes = s.readpartial(24 - preface.bytesize)
-		preface << bytes
-		say "PARTIAL PREFACE: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}" if preface.bytesize < 24
-	end
-	if bytes == PREFACE
-		say "RECEIVED PREFACE"
-	else
-		raise
-	end
-end
+#preader = Thread.new do
+#	Thread.current[:reader] = true
+#	preface = ''
+#	while preface.bytesize < 24
+#		bytes = s.readpartial(24 - preface.bytesize)
+#		preface << bytes
+#		say "PARTIAL PREFACE: #{bytes.each_byte.map{|b|'%02X' % b}.join ' '}" if preface.bytesize < 24
+#	end
+#	if bytes == PREFACE
+#		say "RECEIVED PREFACE"
+#	else
+#		raise
+#	end
+#end
 s.xmit PREFACE
-preader.join
+#preader.join
 
 #---
 

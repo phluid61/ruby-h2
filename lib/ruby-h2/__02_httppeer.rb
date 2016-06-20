@@ -355,12 +355,14 @@ blue "deliver #{r.inspect}"
 					preface << s.readpartial(24 - preface.length)
 				end
 			end
-			t1 = Thread.new do
-				_write s, PREFACE
-			end
+			#if @i_am_the_client
+			#	t1 = Thread.new do
+			#		_write s, PREFACE
+			#	end
+			#end
 			t0.join
 			raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
-			t1.join
+			#t1.join
 		end
 
 		def send_frame g, is_first_settings=false
