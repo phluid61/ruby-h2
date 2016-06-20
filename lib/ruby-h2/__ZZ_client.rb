@@ -23,6 +23,7 @@ require 'socket'
 s = TCPSocket.new 'localhost', 8888
 
 if $USE_HTTPS
+	$scheme = 'https'
 	require 'openssl'
 	ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_client
 	ctx.verify_callback = lambda {|pverify_ok, store_context| true } # security!
@@ -40,6 +41,7 @@ if $USE_HTTPS
 	s.sync_close = true
 	s.connect
 else
+	$scheme = 'http'
 	s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 	#s.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 end
@@ -247,8 +249,8 @@ open 1
 # HEADERS (GET /)
 bytes = hpack.create_block({
 	':method' => 'GET',
-	':scheme' => 'http',
-	':authority' => 'localhost',
+	':scheme' => $scheme,
+	':authority' => 'localhost:8888',
 	':path' => '/',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
@@ -271,8 +273,8 @@ open 3
 # HEADERS (GET /nonesuch)
 bytes = hpack.create_block({
 	':method' => 'GET',
-	':scheme' => 'http',
-	':authority' => 'localhost',
+	':scheme' => $scheme,
+	':authority' => 'localhost:8888',
 	':path' => '/nonesuch',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
@@ -292,7 +294,8 @@ open 5
 payload = 'foobar'
 bytes = hpack.create_block({
 	':method' => 'POST',
-	':scheme' => 'http',
+	':scheme' => $scheme,
+	':authority' => 'localhost:8888',
 	':path' => '/',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
@@ -319,7 +322,8 @@ open 7
 # HEADERS (GET /padded)
 bytes = hpack.create_block({
 	':method' => 'GET',
-	':scheme' => 'http',
+	':scheme' => $scheme,
+	':authority' => 'localhost:8888',
 	':path' => '/padded',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
@@ -348,7 +352,8 @@ open 9
 # HEADERS (GET /padded)
 bytes = hpack.create_block({
 	':method' => 'GET',
-	':scheme' => 'http',
+	':scheme' => $scheme,
+	':authority' => 'localhost:8888',
 	':path' => '/',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
@@ -367,7 +372,8 @@ open 11
 # HEADERS (GET /padded)
 bytes = hpack.create_block({
 	':method' => 'GET',
-	':scheme' => 'http',
+	':scheme' => $scheme,
+	':authority' => 'localhost:8888',
 	':path' => '/padded',
 	'host' => 'localhost',
 	'date' => Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z'),
