@@ -17,7 +17,7 @@ def flg(f)
 	s = "#{f.to_s 16}"
 	a = []
 	n = 1
-	while n < f
+	while n <= f
 		if (f & n) == n
 			a << ('%02X' % n)
 		end
