@@ -2,6 +2,7 @@
 # vim: ts=2 sts=2 sw=2 expandtab
 
 require_relative 'httppeer'
+require_relative 'http-response'
 
 require 'logger'
 

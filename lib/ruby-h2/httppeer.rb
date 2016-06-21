@@ -43,7 +43,8 @@ require_relative 'settings'
 require_relative 'errors'
 require_relative 'hpack'
 
-require_relative '__03_objects'
+require_relative 'http-request'
+require_relative 'stream'
 
 module RUBYH2
 
