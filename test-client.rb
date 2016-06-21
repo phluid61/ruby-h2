@@ -1,7 +1,19 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2 expandtab
 
-$USE_HTTPS = true
+require 'optparse'
+opts = {
+  :host => 'localhost',
+  :port => 8888,
+  :https => true,
+}
+OptionParser.new do |o|
+  o.banner = "Usage: ruby #{$0} [options]"
+  o.on('-h', '--host HOST', 'The server name to connect to [default=localhost]') {|h| opts[:host] = h }
+  o.on('-p', '--port PORT', OptionParser::DecimalInteger, 'The TCP port to connect to [default=8888]') {|p| opts[:port] = Integer(p) }
+  o.on('-s', '--[no-]https', 'Whether or not to use HTTPS [default=true]') {|s| opts[:https] = s }
+  o.on('-?', '--help', 'Show this help message, and quit') { puts o; exit }
+end.parse!
 
 ### DEBUG FUNCTIONS
 require 'thread'
@@ -20,9 +32,10 @@ module Kernel
 end
 
 require 'socket'
-s = TCPSocket.new 'localhost', 8888
+s = TCPSocket.new opts[:host], opts[:port]
+s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 
-if $USE_HTTPS
+if opts[:https]
   $scheme = 'https'
   require 'openssl'
   ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_client
@@ -34,7 +47,7 @@ if $USE_HTTPS
   end
   s = OpenSSL::SSL::SSLSocket.new s, ctx
   if s.respond_to? :hostname=
-    s.hostname = 'localhost'
+    s.hostname = opts[:host]
   else
     STDERR.puts "OpenSSL version doesn't support SNI"
   end
@@ -42,8 +55,6 @@ if $USE_HTTPS
   s.connect
 else
   $scheme = 'http'
-  s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-  #s.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
 end
 
 require 'zlib'
