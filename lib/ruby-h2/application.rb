@@ -131,7 +131,7 @@ at_exit do
       exit
     end
   end
-  Application.logger.info "listening on port #{Application.port}"
+  Application.logger.info "#{server.class.name} listening on port #{Application.port}"
   loop do
     hclient = RUBYH2::HTTPPeer.new(Application.logger)
     hclient.send_gzip! if Application.gzip?

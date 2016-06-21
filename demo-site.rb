@@ -1,10 +1,22 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2 expandtab
 
+require 'optparse'
+opts = {
+  :port => 8888,
+  :https => true,
+}
+OptionParser.new do |o|
+  o.banner = "Usage: ruby #{$0} [options]"
+  o.on('-p', '--port PORT', OptionParser::DecimalInteger, 'The TCP port to listen for new connections [default=8888]') {|p| opts[:port] = Integer(p) }
+  o.on('-s', '--[no-]https', 'Whether or not to use HTTPS [default=true]') {|s| opts[:https] = s }
+  o.on('-?', '--help', 'Show this help message, and quit') { puts o; exit }
+end.parse!
+
 require_relative 'lib/ruby-h2/application'
 
-Application.port = 8888
-Application.https = true
+Application.port = opts[:port]
+Application.https = opts[:https]
 
 get '/' do
   <<HTML
