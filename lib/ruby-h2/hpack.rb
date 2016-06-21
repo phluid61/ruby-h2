@@ -202,6 +202,7 @@ module RUBYH2
 		end
 
 		def create_block headers
+			index = true # TODO
 			bytes = String.new.b
 			headers.each do |name, value|
 				i = @table_out.find name, value
@@ -209,19 +210,34 @@ module RUBYH2
 					# generate indexed thing
 					bytes << RUBYH2::HPackEncoding.encode_int( i, prefix_bits: 7, prefix: 0x80 )
 					# TODO: @table_out.add name, value ???
-				else
+				elsif index
 					i = @table_out.find_name name
 					if i
 						# generate a half-indexed thing
 						bytes << RUBYH2::HPackEncoding.encode_int( i, prefix_bits: 6, prefix: 0x40 )
 						bytes << RUBYH2::HPackEncoding.encode_string( value )
-						# TODO: @table_out.add name, value ???
+						@table_out.add name, value
 					else
 						# generate a literal thing
-						bytes << RUBYH2::HPackEncoding.encode_int( 0, prefix_bits: 6, prefix: 0x40 )
+						#bytes << RUBYH2::HPackEncoding.encode_int( 0, prefix_bits: 6, prefix: 0x40 )
+						bytes << 0x40.chr
 						bytes << RUBYH2::HPackEncoding.encode_string( name )
 						bytes << RUBYH2::HPackEncoding.encode_string( value )
-						# TODO: @table_out.add name, value ???
+						@table_out.add name, value
+					end
+				else
+					pfx = (index.nil? ? 0x00 : 0x10)
+					i = @table_out.find_name name
+					if i
+						# generate a half-indexed thing
+						bytes << RUBYH2::HPackEncoding.encode_int( i, prefix_bits: 4, prefix: pfx )
+						bytes << RUBYH2::HPackEncoding.encode_string( value )
+					else
+						# generate a literal thing
+						#bytes << RUBYH2::HPackEncoding.encode_int( 0, prefix_bits: 4, prefix: fx )
+						bytes << pfx.chr
+						bytes << RUBYH2::HPackEncoding.encode_string( name )
+						bytes << RUBYH2::HPackEncoding.encode_string( value )
 					end
 				end
 			end
