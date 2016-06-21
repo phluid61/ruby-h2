@@ -140,6 +140,7 @@ at_exit do
 		socket = server.accept
 		sock_desc = nil
 		if socket.is_a? OpenSSL::SSL::SSLSocket
+			socket.io.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 			if socket.respond_to? :alpn_protocol
 				sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
 			else
@@ -148,8 +149,6 @@ at_exit do
 			p socket.cipher
 		else
 			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, [0,500].pack('l_2'))
-			#socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, [10, 0].pack('l_2'))
 			sock_desc = "#{socket.remote_address.inspect_sockaddr}"
 		end
 		Application.logger.info "client connected from #{sock_desc}"
