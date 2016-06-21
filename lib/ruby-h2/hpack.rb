@@ -202,7 +202,8 @@ module RUBYH2
 		end
 
 		def create_block headers
-			index = true # TODO
+			# FIXME
+			index = true # true=index, nil=don't index, false=never index
 			bytes = String.new.b
 			headers.each do |name, value|
 				i = @table_out.find name, value
