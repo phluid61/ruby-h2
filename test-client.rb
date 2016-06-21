@@ -111,8 +111,8 @@ s.xmit PREFACE
 
 #---
 
-require_relative 'frame-types'
-require_relative 'hpack'
+require_relative 'lib/ruby-h2/frame-types'
+require_relative 'lib/ruby-h2/hpack'
 $frame_name = Hash[ RUBYH2::FrameTypes.constants.map{|c| [RUBYH2::FrameTypes.const_get(c), c]} ]
 
 #---
