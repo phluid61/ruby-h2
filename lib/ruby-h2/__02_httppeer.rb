@@ -173,7 +173,7 @@ blue "deliver #{r.inspect}"
 			all_headers.merge! r_headers
 			hblock = @hpack.create_block all_headers
 			# split header block into chunks and deliver
-			chunks = hblock.scan(/.{1,#{@max_frame_size}}/).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
+			chunks = hblock.scan(/.{1,#{@max_frame_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
 			if chunks.empty?
 				# I cast no judgement here, but shouldn't there be some headers..?
 				chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
