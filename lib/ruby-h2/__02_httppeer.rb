@@ -188,10 +188,7 @@ blue "deliver #{r.inspect}"
 			# pad out to %256 bytes if required
 			_pad chunks.last if r.pad?
 			# send the headers frame(s)
-hp = HPack.new
 			chunks.each do |chunk|
-hp.parse_block(chunk[:bytes]){|k,v|green "  [#{k}]: [#{v}]"}
-green "--"
 				g = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
 				send_frame g
 			end
