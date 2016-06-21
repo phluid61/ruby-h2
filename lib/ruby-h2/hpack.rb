@@ -50,14 +50,20 @@ module RUBYH2
 		end
 
 		def find n, v
+			self.class.static_table.each_with_index do |e,i|
+				return i+1 if e.name == n && e.value == v
+			end
 			@dtable.each_with_index do |e,i|
-				return i if e.name == n && e.value == v
+				return i+62 if e.name == n && e.value == v
 			end
 			nil
 		end
 		def find_name n
+			self.class.static_table.each_with_index do |e,i|
+				return i+1 if e.name == n
+			end
 			@dtable.each_with_index do |e,i|
-				return i if e.name == n
+				return i+62 if e.name == n
 			end
 			nil
 		end
