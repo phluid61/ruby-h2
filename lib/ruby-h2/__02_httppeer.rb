@@ -188,7 +188,10 @@ blue "deliver #{r.inspect}"
 			# pad out to %256 bytes if required
 			_pad chunks.last if r.pad?
 			# send the headers frame(s)
+hp = HPack.new
 			chunks.each do |chunk|
+hp.parse_block(chunk[:bytes]){|k,v|green "  [#{k}]: [#{v}]"}
+green "--"
 				g = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
 				send_frame g
 			end
@@ -596,10 +599,13 @@ blue "deliver #{r.inspect}"
 				bytes = f.payload
 				bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 				priority, bytes = extract_priority(bytes) if f.flag? FLAG_PRIORITY
+yellow "priority: #{priority.inspect}"
 				# TODO: handle priority?
 				@hpack.parse_block(bytes) do |k, v|
+yellow "  [#{k}]: [#{v}]"
 					@streams[f.sid][k] << v
 				end
+yellow "--"
 			end
 
 			# if end-of-stream, emit the request
