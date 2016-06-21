@@ -137,28 +137,33 @@ at_exit do
 		hclient.send_gzip! if Application.gzip?
 		hclient.accept_gzip! if Application.gzip?
 		hclient.on_request {|r| Application.handle_request r, hclient }
-		socket = server.accept
-		sock_desc = nil
-		if socket.is_a? OpenSSL::SSL::SSLSocket
-			socket.io.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-			if socket.respond_to? :alpn_protocol
-				sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
+		begin
+			socket = server.accept
+			sock_desc = nil
+			if socket.is_a? OpenSSL::SSL::SSLSocket
+				#socket.io.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+				if socket.respond_to? :alpn_protocol
+					sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
+				else
+					sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
+				end
+				p socket.cipher
 			else
-				sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}]"
+				socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+				sock_desc = "#{socket.remote_address.inspect_sockaddr}"
 			end
-			p socket.cipher
-		else
-			socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-			sock_desc = "#{socket.remote_address.inspect_sockaddr}"
-		end
-		Application.logger.info "client connected from #{sock_desc}"
-		threads.spawn(sock_desc) do |sock_desc|
-			begin
-				hclient.wrap socket
-			rescue Exception => e
-				Application.logger.error "error in client #{sock_desc}: #{e.class.name}: #{e}"
-				STDERR.puts "#{e.class.name}: #{e}", *e.backtrace.map{|bt|"\t#{bt}"}
+			Application.logger.info "client connected from #{sock_desc}"
+			threads.spawn(sock_desc) do |sock_desc|
+				begin
+					hclient.wrap socket
+				rescue Exception => e
+					Application.logger.error "error in client #{sock_desc}: #{e.class.name}: #{e}"
+					STDERR.puts "#{e.class.name}: #{e}", *e.backtrace.map{|bt|"\t#{bt}"}
+				end
 			end
+		rescue => e
+			Application.logger.error "error in server: #{e.class.name}: #{e}"
+			STDERR.puts "#{e.class.name}: #{e}", *e.backtrace.map{|bt|"\t#{bt}"}
 		end
 	end
 end
