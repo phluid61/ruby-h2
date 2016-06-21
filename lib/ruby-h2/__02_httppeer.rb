@@ -167,8 +167,10 @@ red "read #{hex bytes}"
 blue "deliver #{r.inspect}"
 
 			# create headers
-			all_headers = r.headers.dup
-			all_headers[':status'] = r.status.to_s
+			all_headers = {':status' => r.status.to_s}
+			r_headers = r.headers.dup
+			r_headers.delete ':status'
+			all_headers.merge! r_headers
 			hblock = @hpack.create_block all_headers
 			# split header block into chunks and deliver
 			chunks = hblock.scan(/.{1,#{@max_frame_size}}/).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
