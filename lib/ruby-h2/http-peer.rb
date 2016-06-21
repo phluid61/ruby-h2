@@ -59,8 +59,9 @@ module RUBYH2
 
     include Error
 
-    def initialize logger
+    def initialize is_server, logger
       # machinery state
+      @is_server = is_server
       @request_proc = nil
       @hook = HeadersHook.new
       @hook.on_frame {|f| recv_frame f }
@@ -358,14 +359,16 @@ blue "deliver #{r.inspect}"
           preface << s.readpartial(24 - preface.length)
         end
       end
-      #if @i_am_the_client
-      #  t1 = Thread.new do
-      #    _write s, PREFACE
-      #  end
-      #end
+      if !@is_server
+        t1 = Thread.new do
+          _write s, PREFACE
+        end
+      end
       t0.join
       raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
-      #t1.join
+      if !@is_server
+        t1.join
+      end
     end
 
     def send_frame g, is_first_settings=false
