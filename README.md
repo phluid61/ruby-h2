@@ -14,9 +14,9 @@ valid X.509 certificate and key in the same directory.
 
 By default the demo site serves the following resources:
 
-* https://localhost:8888/ - a simple HTML page
+* `https://localhost:8888/` - a simple HTML page
 
-* https://localhost:8888/padded - as above, but uses HTTP/2 padding
+* `https://localhost:8888/padded` - as above, but uses HTTP/2 padding
    on HEADERS and DATA frames in the response
 
 The server sends a valid 404 response for any other resource, and a 405
