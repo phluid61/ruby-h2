@@ -111,7 +111,6 @@ at_exit do
       #ctx.ciphers = '+ECDHE-RSA-AES128-GCM-SHA256:HIGH:!ADH:!SSLv2:!RC4:!aNULL:+3DES';
       #ctx.ciphers = 'ECDHE-RSA-AES128-GCM-SHA256';
       ctx.ciphers = 'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH';
-#p *ctx.ciphers
       if ctx.respond_to? :alpn_select_cb=
         ctx.alpn_select_cb = lambda {|p| p.delete('h2') or raise "can only speak h2" }
       else
@@ -142,7 +141,7 @@ at_exit do
       socket = server.accept
       sock_desc = nil
       if socket.is_a? OpenSSL::SSL::SSLSocket
-        #socket.io.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+        socket.io.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
         if socket.respond_to? :alpn_protocol
           sock_desc = "#{socket.io.remote_address.inspect_sockaddr} [#{socket.ssl_version}/#{socket.alpn_protocol}]"
         else
