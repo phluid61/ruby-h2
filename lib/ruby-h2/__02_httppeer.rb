@@ -517,7 +517,7 @@ green "--"
 
 		def extract_priority bytes
 			stream, weight, bytes = bytes.unpack('NCa*')
-			exclusive = stream & 0x80000000
+			exclusive = (stream & 0x80000000) == 0x80000000
 			stream &= 0x7fffffff
 			[{exclusive:exclusive, stream:stream, weight:weight}, bytes]
 		end
