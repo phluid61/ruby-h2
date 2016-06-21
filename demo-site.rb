@@ -1,7 +1,7 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2
 
-require_relative '__01_library'
+require_relative 'lib/ruby-h2/application'
 
 Application.port = 8888
 Application.https = true
