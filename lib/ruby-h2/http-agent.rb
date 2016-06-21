@@ -50,7 +50,7 @@ module RUBYH2
 
   PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
-  class HTTPPeer
+  class HTTPAgent
     FLAG_END_STREAM  = 0x1
     FLAG_ACK         = 0x1
     FLAG_END_HEADERS = 0x4
@@ -94,7 +94,7 @@ module RUBYH2
     end
 
     def inspect
-      "\#<HTTPPeer @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_peer=#{@push_to_peer.inspect}>"
+      "\#<HTTPAgent @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_peer=#{@push_to_peer.inspect}>"
     end
 
     attr_reader :push_to_peer

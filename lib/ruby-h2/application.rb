@@ -1,7 +1,7 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2 expandtab
 
-require_relative 'http-peer'
+require_relative 'http-agent'
 require_relative 'http-response'
 
 require 'logger'
@@ -133,7 +133,7 @@ at_exit do
   end
   Application.logger.info "#{server.class.name} listening on port #{Application.port}"
   loop do
-    hclient = RUBYH2::HTTPPeer.new(true, Application.logger)
+    hclient = RUBYH2::HTTPAgent.new(true, Application.logger)
     hclient.send_gzip! if Application.gzip?
     hclient.accept_gzip! if Application.gzip?
     hclient.on_request {|r| Application.handle_request r, hclient }
