@@ -94,7 +94,7 @@ agent.on_response do |r|
  $got_response = true
 end
 agent.on_cancel do |sid, err|
-  name = RUBYH2::Error.constants.find {|e| err = RUBYH2::Error.const_get(e) }
+  name = RUBYH2::Error.constants.find {|e| err == RUBYH2::Error.const_get(e) }
   name ||= "\##{err}"
   puts "*** cancelled stream #{sid}: #{name}"
   agent.shut_down
