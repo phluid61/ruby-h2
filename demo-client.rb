@@ -55,8 +55,9 @@ $shutdown = false
 agent = RUBYH2::HTTPAgent.new(false, logger)
 agent.on_response do |r|
   #puts "RECEIVED RESPONSE: #{r.inspect}"
+  puts '--'
   r.headers.each_pair do |k,v|
-    puts "> #{k}: [#{v}]"
+    puts "#{k}: [#{v}]"
   end
   puts ''
   puts r.body
