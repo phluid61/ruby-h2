@@ -40,6 +40,12 @@ if opts[:https]
   end
   s.sync_close = true
   s.connect
+
+  if s.respond_to? :alpn_protocol
+    puts "connected: #{s.io.remote_address.inspect_sockaddr} [#{s.ssl_version}/#{s.alpn_protocol}]"
+  else
+    puts "connected: #{s.io.remote_address.inspect_sockaddr} [#{s.ssl_version}]"
+  end
 else
   $scheme = 'http'
   $authority += ":#{opts[:port]}" if opts[:port] != 80
@@ -53,18 +59,39 @@ logger.sev_threshold = Logger::DEBUG
 
 require_relative 'lib/ruby-h2/http-agent'
 require_relative 'lib/ruby-h2/http-request'
+require 'zlib'
+require 'stringio'
 
+$got_response = false
 $shutdown = false
 agent = RUBYH2::HTTPAgent.new(false, logger)
 agent.on_response do |r|
   #puts "RECEIVED RESPONSE: #{r.inspect}"
   puts '--'
+  gzip = nil
   r.headers.each_pair do |k,v|
     puts "#{k}: [#{v}]"
+    gzip = true if k.downcase == 'content-encoding' && v == 'gzip'
   end
   puts ''
+
+  bytes = r.body
+  filename = 'output'
+  if gzip
+    begin
+      puts "unzipping #{bytes.bytesize}..."
+      bytes = Zlib::GzipReader.new(StringIO.new bytes).read
+      puts "=> #{bytes.bytesize}"
+    rescue Zlib::Error => e
+      puts "#{e.class.name}: #{e}"
+      filename += '.gz'
+    end
+  end
+  File.open(filename, 'w') {|f| f.write bytes }
+
   #puts r.body
   #puts '--'
+ $got_response = true
 end
 wrapper = Thread.new do
   begin
@@ -77,25 +104,27 @@ wrapper = Thread.new do
   end
 end
 
-agent.ping 'UUUUUUUU'
-
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
   'host' => opts[:host],
-  'user-agent' => 'TestClient/1.0',
+  'user-agent' => 'RubyH2-Client/1.0',
+  'accept-encoding' => 'gzip',
 }
 agent.deliver RUBYH2::HTTPRequest.new(1, 'GET', '/', headers)
 
-agent.ping '33333333'
+loop do
+  sleep 0.5
+  if $got_response
+    $shutdown = true
+    agent.shut_down
+    break
+  elsif agent.shutdown?
+    $shutdown = true
+    break
+  end
+end
 
-sleep 5
-
-$shutdown = true
-agent.shut_down
-
-sleep 2
 s.close
-
 wrapper.join
 
