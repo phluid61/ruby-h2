@@ -65,6 +65,7 @@ module RUBYH2
       @is_server = is_server
       @request_proc = nil
       @response_proc = nil
+      @cancel_proc = nil
       @hook = HeadersHook.new
       @hook.on_frame {|f| recv_frame f }
       @hpack = HPack.new
@@ -123,6 +124,16 @@ module RUBYH2
     #
     def on_response &b
       @response_proc = b
+      self
+    end
+
+    ##
+    # Set the callback to be invoked when a stream is cancelled.
+    #
+    # @yield stream_id, error_code
+    #
+    def on_cancel &b
+      @cancel_proc = b
       self
     end
 
@@ -534,6 +545,11 @@ blue "deliver #{m.inspect}"
       end
     end
 
+    # triggered when a stream is cancelled (RST_STREAM)
+    def emit_cancel sid, error
+      @cancel_proc.call sid, error if @cancel_proc
+    end
+
     def strip_padding bytes
       ints = bytes.bytes
       pad_length = ints.shift
@@ -730,7 +746,7 @@ yellow "--"
       error_code = f.payload.unpack('N').first
       @logger.info "received RST_STREAM (stream ID=#{f.sid}, error_code=0x#{error_code.to_s 16})"
 
-      shut_down
+      emit_cancel f.sid, error_code if !@goaway
     end
 
     def handle_window_update f
