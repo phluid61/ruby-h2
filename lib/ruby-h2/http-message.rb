@@ -17,7 +17,7 @@ module RUBYH2
         h = ":#{m}"
         singleton_class.send(:define_method, :"#{m}") { @headers[h] }
         singleton_class.send(:define_method, :"#{m}=") {|v| @headers[h] = v.to_s }
-        @headers[h] = headers.delete(h) if headers
+        @headers[h] = headers.delete(h) if headers && headers[h]
       end
       @headers.merge! headers
     end
