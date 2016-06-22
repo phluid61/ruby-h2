@@ -13,7 +13,7 @@ module RUBYH2
       headers = headers ? headers.dup : {}
       @headers = {}
       virtual_headers.each do |h|
-        m = h.sub /^:/, ''
+        m = h.sub(/^:/, '').downcase
         h = ":#{m}"
         singleton_class.send(:define_method, :"#{m}") { @headers[h] }
         singleton_class.send(:define_method, :"#{m}=") {|v| @headers[h] = v.to_s }
@@ -26,11 +26,11 @@ module RUBYH2
 
     attr_reader :headers
     def []= h, v
-      @headers[h] = v.to_s
+      @headers[h.downcase] = v.to_s
     end
 
     def [] h
-      @headers[h]
+      @headers[h.downcase]
     end
 
     attr_reader :body
