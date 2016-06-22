@@ -20,8 +20,10 @@ require 'socket'
 s = TCPSocket.new opts[:host], opts[:port]
 s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 
+$authority = opts[:host]
 if opts[:https]
   $scheme = 'https'
+  $authority += ":#{opts[:port]}" if opts[:port] != 443
   require 'openssl'
   ctx = OpenSSL::SSL::SSLContext.new :TLSv1_2_client
   ctx.verify_callback = lambda {|pverify_ok, store_context| true } # security!
@@ -40,6 +42,7 @@ if opts[:https]
   s.connect
 else
   $scheme = 'http'
+  $authority += ":#{opts[:port]}" if opts[:port] != 80
 end
 
 require 'logger'
@@ -78,8 +81,8 @@ agent.ping 'UUUUUUUU'
 
 headers = {
   ':scheme' => $scheme,
-  ':authority' => 'localhost:8888',
-  'host' => 'localhost',
+  ':authority' => $authority,
+  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(1, 'GET', '/', headers)
@@ -90,8 +93,8 @@ sleep 1
 
 headers = {
   ':scheme' => $scheme,
-  ':authority' => 'localhost:8888',
-  'host' => 'localhost',
+  ':authority' => $authority,
+  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(3, 'GET', '/nonesuch', headers)
@@ -101,8 +104,8 @@ sleep 0.5
 payload = 'foobar'
 headers = {
   ':scheme' => $scheme,
-  ':authority' => 'localhost:8888',
-  'host' => 'localhost',
+  ':authority' => $authority,
+  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
   'content-type' => 'text/plain',
   'content-length' => payload.bytesize.to_s,
@@ -113,8 +116,8 @@ sleep 0.5
 
 headers = {
   ':scheme' => $scheme,
-  ':authority' => 'localhost:8888',
-  'host' => 'localhost',
+  ':authority' => $authority,
+  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(7, 'GET', '/padded', headers)
@@ -127,8 +130,8 @@ sleep 0.25
 
 headers = {
   ':scheme' => $scheme,
-  ':authority' => 'localhost:8888',
-  'host' => 'localhost',
+  ':authority' => $authority,
+  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(9, 'GET', '/', headers)
@@ -137,8 +140,8 @@ sleep 0.5
 
 headers = {
   ':scheme' => $scheme,
-  ':authority' => 'localhost:8888',
-  'host' => 'localhost',
+  ':authority' => $authority,
+  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(11, 'GET', '/padded', headers)
