@@ -5,12 +5,14 @@ require 'optparse'
 opts = {
   :host => 'google.com',
   :port => 443,
+  :path => '/',
   :https => true,
 }
 OptionParser.new do |o|
   o.banner = "Usage: ruby #{$0} [options]"
   o.on('-h', '--host HOST', 'The server name to connect to') {|h| opts[:host] = h }
   o.on('-p', '--port PORT', OptionParser::DecimalInteger, 'The TCP port to connect to') {|p| opts[:port] = Integer(p) }
+  o.on(      '--path PATH', 'The path to request') {|p| opts[:path] = p }
   o.on('-s', '--[no-]https', 'Whether or not to use HTTPS') {|s| opts[:https] = s }
   o.on('-?', '--help', 'Show this help message, and quit') { puts o; exit }
 end.parse!
@@ -123,7 +125,7 @@ headers = {
   'user-agent' => 'RubyH2-Client/1.0',
   'accept-encoding' => 'gzip',
 }
-agent.deliver RUBYH2::HTTPRequest.new(1, 'GET', '/', headers)
+agent.deliver RUBYH2::HTTPRequest.new(1, 'GET', opts[:path], headers)
 
 loop do
   sleep 0.5
