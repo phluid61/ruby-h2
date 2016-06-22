@@ -99,6 +99,15 @@ module RUBYH2
       "\#<HTTPAgent @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_peer=#{@push_to_peer.inspect}>"
     end
 
+    ##
+    # True if we've sent or received a GOAWAY frame.
+    #
+    def shutdown?
+      @shutdown_lock.synchronize {
+        @shutting_down
+      }
+    end
+
     attr_reader :push_to_peer
 
     ##
@@ -466,7 +475,7 @@ blue "deliver #{m.inspect}"
       when FrameTypes::PRIORITY
         # TODO
       when FrameTypes::RST_STREAM
-        # TODO
+        handle_rst_stream f
       when FrameTypes::SETTINGS
         handle_settings f
       when FrameTypes::PUSH_PROMISE
@@ -710,6 +719,16 @@ yellow "--"
       @goaway, error_code, debug_data = f.payload.unpack('NNa*')
       @logger.info "received GOAWAY (last stream ID=#{@goaway}, error_code=0x#{error_code.to_s 16})"
       @logger.info debug_data.inspect if debug_data && debug_data.bytesize > 0
+
+      shut_down
+    end
+
+    def handle_rst_stream f
+      raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM on stream id #{f.sid}") if f.sid == 0
+      raise ConnectionError.new(PROTOCOL_ERROR, "RST_STREAM payload must be 4 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 4
+      # TODO
+      error_code = f.payload.unpack('N').first
+      @logger.info "received RST_STREAM (stream ID=#{f.sid}, error_code=0x#{error_code.to_s 16})"
 
       shut_down
     end
