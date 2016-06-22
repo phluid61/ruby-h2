@@ -550,13 +550,17 @@ blue "deliver #{m.inspect}"
       return if @goaway
 
       bytes = f.payload
-      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       # never run out of window space
-      g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
-      h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [bytes.bytesize].pack('N')
-      send_frame g
-      send_frame h
+      size = bytes.bytesize
+      if size > 0
+        g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [size].pack('N')
+        h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [size].pack('N')
+        send_frame g
+        send_frame h
+      end
+
+      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       stream << bytes
       emit_message f.sid, stream if f.flag? FLAG_END_STREAM
@@ -581,8 +585,11 @@ blue "deliver #{m.inspect}"
       bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       # never run out of window space
-      g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0,     [bytes.bytesize].pack('N')
-      send_frame g
+      size = bytes.bytesize
+      if size > 0
+        g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0, [size].pack('N')
+        send_frame g
+      end
 
       inflated_bytes = nil
       gunzip = Zlib::GzipReader.new(StringIO.new bytes)
@@ -596,8 +603,10 @@ blue "deliver #{m.inspect}"
       end
 
       # note: only update the frame window if gunzip succeeddededd
-      h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [bytes.bytesize].pack('N')
-      send_frame h
+      if size > 0
+        h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [size].pack('N')
+        send_frame h
+      end
 
       stream << inflated_bytes
       emit_message f.sid, stream if f.flag? FLAG_END_STREAM
