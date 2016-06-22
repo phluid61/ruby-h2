@@ -136,7 +136,7 @@ brown "dsil: received #{frm f}"
       handle_prefaces s
       #send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
       #send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
-      send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => 0x4000, Settings::ACCEPT_GZIPPED_DATA => 1}), true
+      send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}), true
       loop do
         bytes = begin
           s.readpartial(4*1024*1024)
@@ -372,7 +372,7 @@ blue "deliver #{m.inspect}"
 
 
     def handle_prefaces s
-      if !@is_server
+      if @is_server
         preface = String.new.b
         while preface.length < 24
           preface << s.readpartial(24 - preface.length)
