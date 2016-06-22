@@ -1,26 +1,16 @@
 # encoding: BINARY
 # vim: ts=2 sts=2 sw=2 expandtab
 
+require_relative 'http-message'
+
 module RUBYH2
 
-  class HTTPRequest
-    def initialize stream, method, path, version, headers, body
-      @stream  = stream
-      @method  = method
-      @path    = path
-      @version = version
-      @headers = headers
-      @body    = body
-    end
-    attr_reader :stream
-    attr_reader :method
-    attr_reader :path
-    attr_reader :version
-    attr_reader :headers
-    attr_reader :body
-
-    def inspect
-      "\#<HTTPRequest @stream=#{@stream.inspect}, @method=#{@method.inspect}, @path=#{@path.inspect}, @version=#{@version.inspect}, @headers=#{@headers.inspect}, @body=#{@body.inspect}>"
+  class HTTPRequest < HTTPMessage
+    def initialize stream, method, path, headers=nil, body=nil
+      headers = headers ? headers.dup : {}
+      headers[':method'] = method
+      headers[':path'] = path
+      super stream, %w( :method :path :authority ), headers, body
     end
   end
 

@@ -161,19 +161,15 @@ red "read #{hex bytes}"
     end
 
     ##
-    # deliver HTTPResponse
-    def deliver r
+    # deliver HTTPMessage object
+    def deliver m
       @shutdown_lock.synchronize {
-        raise "delivering response after GOAWAY" if @shutting_down # FIXME
+        raise "delivering message after GOAWAY" if @shutting_down # FIXME
       }
-blue "deliver #{r.inspect}"
+blue "deliver #{m.inspect}"
 
       # create headers
-      all_headers = {':status' => r.status.to_s}
-      r_headers = r.headers.dup
-      r_headers.delete ':status'
-      all_headers.merge! r_headers
-      hblock = @hpack.create_block all_headers
+      hblock = @hpack.create_block m.headers
       # split header block into chunks and deliver
       chunks = hblock.scan(/.{1,#{@max_frame_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
       if chunks.empty?
@@ -184,23 +180,23 @@ blue "deliver #{r.inspect}"
         chunks.last[:flags] |= FLAG_END_HEADERS
       end
       # without data, the HEADERS ends the stream
-      if r.body.empty?
+      if m.body.empty?
         chunks.last[:flags] |= FLAG_END_STREAM
       end
       # pad out to %256 bytes if required
-      _pad chunks.last if r.pad?
+      _pad chunks.last if m.pad?
       # send the headers frame(s)
       chunks.each do |chunk|
-        g = Frame.new chunk[:type], chunk[:flags], r.stream, chunk[:bytes]
+        g = Frame.new chunk[:type], chunk[:flags], m.stream, chunk[:bytes]
         send_frame g
       end
 
       # create data
-      if !r.body.empty?
+      if !m.body.empty?
         chunks = []
         if send_gzip?
           type = FrameTypes::GZIPPED_DATA
-          bytes = r.body.b
+          bytes = m.body.b
 
           until bytes.empty?
             # binary search for biggest data chunk that fits when gzipped
@@ -243,25 +239,25 @@ blue "deliver #{r.inspect}"
             # create chunk
             chunk = {flags: 0, bytes: best}
             # pad out to %256 bytes if required
-            _pad chunk if r.pad?
+            _pad chunk if m.pad?
             # add to list
             chunks << chunk
           end
         else
           type = FrameTypes::DATA
-          chunks = r.body.b.scan(/.{1,#{@max_frame_size}}/m).map{|c| {flags: 0, bytes: c} }
+          chunks = m.body.b.scan(/.{1,#{@max_frame_size}}/m).map{|c| {flags: 0, bytes: c} }
           # pad out to %256 bytes if required
-          _pad chunks.last if r.pad?
+          _pad chunks.last if m.pad?
         end
         chunks.last[:flags] |= FLAG_END_STREAM
         chunks.each do |chunk|
-          g = Frame.new type, chunk[:flags], r.stream, chunk[:bytes]
+          g = Frame.new type, chunk[:flags], m.stream, chunk[:bytes]
           send_frame g
         end
       end
 
       # half-close
-      @streams[r.stream].close_local!
+      @streams[m.stream].close_local!
     end
 
     # returns truthy if the given frame carries HTTP semantics
