@@ -82,7 +82,6 @@ agent.ping 'UUUUUUUU'
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(1, 'GET', '/', headers)
@@ -94,7 +93,6 @@ sleep 1
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(3, 'GET', '/nonesuch', headers)
@@ -105,7 +103,6 @@ payload = 'foobar'
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
   'content-type' => 'text/plain',
   'content-length' => payload.bytesize.to_s,
@@ -117,7 +114,6 @@ sleep 0.5
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(7, 'GET', '/padded', headers)
@@ -131,7 +127,6 @@ sleep 0.25
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(9, 'GET', '/', headers)
@@ -141,7 +136,6 @@ sleep 0.5
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'TestClient/1.0',
 }
 agent.deliver RUBYH2::HTTPRequest.new(11, 'GET', '/padded', headers)

@@ -113,7 +113,6 @@ end
 headers = {
   ':scheme' => $scheme,
   ':authority' => $authority,
-  'host' => opts[:host],
   'user-agent' => 'RubyH2-Client/1.0',
   'accept-encoding' => 'gzip',
 }
