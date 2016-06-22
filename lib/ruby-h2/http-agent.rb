@@ -44,6 +44,7 @@ require_relative 'errors'
 require_relative 'hpack'
 
 require_relative 'http-request'
+require_relative 'http-response'
 require_relative 'stream'
 
 module RUBYH2
@@ -63,6 +64,7 @@ module RUBYH2
       # machinery state
       @is_server = is_server
       @request_proc = nil
+      @response_proc = nil
       @hook = HeadersHook.new
       @hook.on_frame {|f| recv_frame f }
       @hpack = HPack.new
@@ -104,6 +106,14 @@ module RUBYH2
     #
     def on_request &b
       @request_proc = b
+      self
+    end
+
+    ##
+    # Set the callback to be invoked when a HTTP response arrives.
+    #
+    def on_response &b
+      @response_proc = b
       self
     end
 
@@ -260,6 +270,20 @@ blue "deliver #{m.inspect}"
       @streams[m.stream].close_local!
     end
 
+    ##
+    # send a PING message
+    def ping message=nil
+      if message
+        message = (message.to_s.b + (0.chr * 8)).slice(0, 8)
+      else
+        now = Time.now
+        message = [now.to_i, now.usec].pack('NN')
+      end
+      @pings << message
+      g = Frame.new FrameTypes::PING, 0, 0, message
+      send_frame g
+    end
+
     # returns truthy if the given frame carries HTTP semantics
     # (so has to be sent in order)
     def semantic_frame? f
@@ -348,22 +372,14 @@ blue "deliver #{m.inspect}"
 
 
     def handle_prefaces s
-      preface = nil
-      t0 = Thread.new do
+      if !@is_server
         preface = String.new.b
         while preface.length < 24
           preface << s.readpartial(24 - preface.length)
         end
-      end
-      if !@is_server
-        t1 = Thread.new do
-          _write s, PREFACE
-        end
-      end
-      t0.join
-      raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
-      if !@is_server
-        t1.join
+        raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
+      else
+        _write s, PREFACE
       end
     end
 
@@ -493,15 +509,20 @@ blue "deliver #{m.inspect}"
       @ext__peer_dropped_frame[type] = true
     end
 
-    # triggered when a completed HTTP request arrives
+    # triggered when a completed HTTP message arrives
     # (farms it off to the registered callback)
-    def emit_request sid, stream
+    def emit_message sid, stream
       # NB: this function only invoked once we get an END_STREAM flag
       stream.close_remote!
       @last_stream = sid
+
       # FIXME
       headers = stream.headers
-      @request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), 'HTTP/2', headers, stream.body )
+      if @is_server
+        @request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), headers, stream.body )
+      else
+        @response_proc.call HTTPResponse.new( sid, headers.delete(':status'), headers, stream.body )
+      end
     end
 
     def strip_padding bytes
@@ -538,7 +559,7 @@ blue "deliver #{m.inspect}"
       send_frame h
 
       stream << bytes
-      emit_request f.sid, stream if f.flag? FLAG_END_STREAM
+      emit_message f.sid, stream if f.flag? FLAG_END_STREAM
     end
 
     def handle_gzipped_data f
@@ -579,34 +600,42 @@ blue "deliver #{m.inspect}"
       send_frame h
 
       stream << inflated_bytes
-      emit_request f.sid, stream if f.flag? FLAG_END_STREAM
+      emit_message f.sid, stream if f.flag? FLAG_END_STREAM
     end
 
     def handle_headers f
       stream = @streams[f.sid]
       if stream
-        raise SemanticError.new("no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM #FIXME: malformed => StreamError:PROTOCOL_ERROR ?
+        if @is_server
+          raise SemanticError.new("no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM #FIXME: malformed => StreamError:PROTOCOL_ERROR ?
+        else
+          # FIXME: detect same thing on RESPONSE messages (server->client)
+        end
         raise StreamError.new(STREAM_CLOSED, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
       else
         raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
         raise ConnectionError.new(PROTOCOL_ERROR, "new stream id #{f.sid} not greater than previous stream id #{@last_stream}") if f.sid <= @last_stream
-        raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by client must be odd, received #{f.sid}") if f.sid % 2 != 1
-        @streams[f.sid] = Stream.new(@default_window_size)
-        # read the header block
-        bytes = f.payload
-        bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
-        priority, bytes = extract_priority(bytes) if f.flag? FLAG_PRIORITY
-yellow "priority: #{priority.inspect}"
-        # TODO: handle priority?
-        @hpack.parse_block(bytes) do |k, v|
-yellow "  [#{k}]: [#{v}]"
-          @streams[f.sid][k] << v
+        if @is_server
+          raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by client must be odd, received #{f.sid}") if f.sid % 2 != 1
+        else
+          raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by server must be event, received #{f.sid}") if f.sid % 2 != 0
         end
-yellow "--"
+        @streams[f.sid] = Stream.new(@default_window_size)
       end
+      # read the header block
+      bytes = f.payload
+      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
+      priority, bytes = extract_priority(bytes) if f.flag? FLAG_PRIORITY
+yellow "priority: #{priority.inspect}"
+      # TODO: handle priority?
+      @hpack.parse_block(bytes) do |k, v|
+yellow "  [#{k}]: [#{v}]"
+        @streams[f.sid][k] << v
+      end
+yellow "--"
 
-      # if end-of-stream, emit the request
-      emit_request f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
+      # if end-of-stream, emit the message
+      emit_message f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
     end
 
     def handle_settings f

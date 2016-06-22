@@ -15,7 +15,8 @@ module RUBYH2
       virtual_headers.each do |h|
         m = h.sub /^:/, ''
         h = ":#{m}"
-        define_method(:"#{m}") { @headers[h] }
+        singleton_class.send(:define_method, :"#{m}") { @headers[h] }
+        singleton_class.send(:define_method, :"#{m}=") {|v| @headers[h] = v.to_s }
         @headers[h] = headers.delete(h) if headers
       end
       @headers.merge! headers

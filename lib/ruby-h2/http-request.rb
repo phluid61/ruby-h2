@@ -10,7 +10,7 @@ module RUBYH2
       headers = headers ? headers.dup : {}
       headers[':method'] = method
       headers[':path'] = path
-      super stream, %w( :method :path :authority ), headers, body
+      super stream, %w( :method :path :authority :scheme ), headers, body
     end
   end
 
