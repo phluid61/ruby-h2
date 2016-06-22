@@ -69,28 +69,35 @@ agent.on_response do |r|
   #puts "RECEIVED RESPONSE: #{r.inspect}"
   puts '--'
   gzip = nil
+  filename = 'output.dat'
   r.headers.each_pair do |k,v|
     puts "#{k}: [#{v}]"
     gzip = true if k.downcase == 'content-encoding' && v == 'gzip'
+    if k.downcase == 'content-disposition' && v =~ /^attachment\s*;\s*filename=("?)([a-z0-9._+-]+)\1$/i
+      filename = $2
+    end
   end
   puts ''
 
   bytes = r.body
-  filename = 'output'
   if gzip
     begin
-      puts "unzipping #{bytes.bytesize}..."
+      print "> inflating #{bytes.bytesize} bytes... "
       bytes = Zlib::GzipReader.new(StringIO.new bytes).read
-      puts "=> #{bytes.bytesize}"
+      puts "=> #{bytes.bytesize} bytes"
     rescue Zlib::Error => e
       puts "#{e.class.name}: #{e}"
       filename += '.gz'
     end
   end
-  File.open(filename, 'w') {|f| f.write bytes }
 
-  #puts r.body
-  #puts '--'
+  if bytes.bytesize > 1023
+    File.open(filename, 'w') {|f| f.write bytes }
+    puts "> #{bytes.bytesize} bytes written to #{filename.inspect}"
+  else
+    puts bytes
+    puts '--'
+  end
  $got_response = true
 end
 agent.on_cancel do |sid, err|
