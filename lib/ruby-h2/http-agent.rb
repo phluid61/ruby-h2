@@ -188,6 +188,7 @@ red "read #{hex bytes}"
       end
     rescue ConnectionError => e
       @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
+      s.read_nonblock(4*1024*1024) rescue nil # flush any in-flight crud
       if !@send_lock.synchronize { @first_frame_out }
         die e.code
       end
