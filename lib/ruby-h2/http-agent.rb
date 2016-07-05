@@ -755,7 +755,13 @@ yellow "--"
       raise ConnectionError.new(PROTOCOL_ERROR, "SETTINGS must be sent on stream 0, received #{f.sid}") if f.sid != 0
 
       if f.flag? FLAG_ACK
-        # TODO
+        # RFC 7540, Section 6.5
+        # "Receipt of a SETTINGS frame with the ACK flag set and a
+        #  length field value other than 0 MUST be treated as a
+        #  connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."
+        raise ConnectionError.new(FRAME_SIZE_ERROR, "SETTINGS ACK must have no payload, got #{f.payload.bytesize} bytes") unless f.payload.bytesize == 0
+
+        # TODO: the rest of this
       else
         hash = Settings.pairs_from(f)
         hash.each_pair do |k, v|
