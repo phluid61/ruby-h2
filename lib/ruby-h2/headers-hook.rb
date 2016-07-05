@@ -35,7 +35,11 @@ module RUBYH2
         @headers << frame.payload
         maybe_continue frame
       else
-        raise 'not CONTINUATION frame'
+        # RFC 7540, Section 6.2 (and others)
+        # "A receiver MUST treat the receipt of any other type of frame
+        #  or a frame on a different stream as a connection error
+        #  (Section 5.4.1) of type PROTOCOL_ERROR."
+        raise ConnectionError.new(Error::PROTOCOL_ERROR, "expected CONTINUATION frame, got 0x#{'%X' % frame.type}")
       end
     end
 
