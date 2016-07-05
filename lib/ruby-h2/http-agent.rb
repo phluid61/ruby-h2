@@ -205,10 +205,15 @@ red "read #{hex bytes}"
       }
 blue "deliver #{m.inspect}"
 
+      max_send_size = [@max_frame_size, @window_size].min
+      if @streams[m.stream]
+        max_send_size = [max_send_size, @streams[m.stream].window_size].min
+      end
+
       # create headers
       hblock = @hpack.create_block m.headers
       # split header block into chunks and deliver
-      chunks = hblock.scan(/.{1,#{@max_frame_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
+      chunks = hblock.scan(/.{1,#{max_send_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
       if chunks.empty?
         # I cast no judgement here, but shouldn't there be some headers..?
         chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
@@ -251,13 +256,13 @@ blue "deliver #{m.inspect}"
 
               rest = bytes[right..-1]
 
-              if gzipped.bytesize > @max_frame_size
+              if gzipped.bytesize > max_send_size
                 # try a smaller sample
                 maxright = right
                 right = maxright - (maxright - left) / 2
                 # is this a good as we'll get?
                 break if right == left
-              elsif gzipped.bytesize == @max_frame_size
+              elsif gzipped.bytesize == max_send_size
                 # perfect!
                 best = gzipped
                 break
@@ -282,7 +287,7 @@ blue "deliver #{m.inspect}"
           end
         else
           type = FrameTypes::DATA
-          chunks = m.body.b.scan(/.{1,#{@max_frame_size}}/m).map{|c| {flags: 0, bytes: c} }
+          chunks = m.body.b.scan(/.{1,#{max_send_size}}/m).map{|c| {flags: 0, bytes: c} }
           # pad out to %256 bytes if required
           _pad chunks.last if m.pad?
         end
@@ -858,13 +863,13 @@ yellow "--"
       # "Receiving any frame other than HEADERS or PRIORITY on a
       #  stream in this state MUST be treated as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
-      raise ConnectionError.new(PROTOCOL_ERROR, "received WINDOW_UPDATE frame on idle stream #{f.sid}") unless @streams[f.sid]
+      raise ConnectionError.new(PROTOCOL_ERROR, "received WINDOW_UPDATE frame on idle stream #{f.sid}") unless f.sid == 0 || @streams[f.sid]
 
       # RFC 7540, Section 6.9
       # "A WINDOW_UPDATE frame with a length other than 4 octets MUST
       #  be treated as a connection error (Section 5.4.1) of type
       #  FRAME_SIZE_ERROR."
-      raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 4
+      raise ConnectionError.new(FRAME_SIZE_ERROR, "WINDOW_UPDATE payload must be 4 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 4
       increment = f.payload.unpack('N').first
 
       #raise 'PROTOCOL_ERROR' if increment & 0x80000000 == 0x80000000
@@ -874,7 +879,11 @@ yellow "--"
       # "A receiver MUST treat the receipt of a WINDOW_UPDATE frame
       #  with an flow-control window increment of 0 as a stream error
       #  (Section 5.4.2) of type PROTOCOL_ERROR"
-      raise StreamError.new(PROTOCOL_ERROR, f.sid, "WINDOW_UPDATE increment should be > 0") if increment == 0
+      if f.sid != 0
+        raise StreamError.new(PROTOCOL_ERROR, f.sid, "WINDOW_UPDATE increment should be > 0") if increment == 0
+      else
+        raise ConnectionError.new(PROTOCOL_ERROR, "WINDOW_UPDATE increment should be > 0") if increment == 0
+      end
 
       if f.sid != 0
         @streams[f.sid].window_size += increment
@@ -889,7 +898,7 @@ yellow "--"
           #       enter the queue because of a blocked DATA
           #       (which isn't allowed on stream 0)
           raise unless s # FIXME
-          catch :STREAM_EXHAUSED do
+          catch :STREAM_EXHAUSTED do
             until queue.empty?
               f = queue.first
               b = (f.type == FrameTypes::DATA ? f.payload_size : 0)
