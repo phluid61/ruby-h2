@@ -158,7 +158,7 @@ _write s, b rescue nil }
       dsil.on_frame do |f|
         begin
 brown "dsil: received #{frm f}"
-        @hook << f
+          @hook << f
         rescue ConnectionError => e
           @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
           die e.code
@@ -520,7 +520,7 @@ blue "deliver #{m.inspect}"
       when FrameTypes::HEADERS
         handle_headers f
       when FrameTypes::PRIORITY
-        # TODO
+        handle_priority f
       when FrameTypes::RST_STREAM
         handle_rst_stream f
       when FrameTypes::SETTINGS
@@ -733,6 +733,22 @@ yellow "--"
 
       # if end-of-stream, emit the message
       emit_message f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
+    end
+
+    def handle_priority f
+      # RFC 7540, Section 6.3
+      # "If a PRIORITY frame is received with a stream identifier of
+      #  0x0, the recipient MUST respond with a connection error
+      #  (Section 5.4.1) of type PROTOCOL_ERROR."
+      raise ConnectionError.new(PROTOCOL_ERROR, "PRIORITY must be sent on stream >0") if f.sid == 0
+
+      # RFC 7540, Section 6.3
+      # "A PRIORITY frame with a length other than 5 octets MUST be
+      #  treated as a stream error (Section 5.4.2) of type
+      #  FRAME_SIZE_ERROR."
+      raise StreamError.new(FRAME_SIZE_ERROR, f.sid, "PRIORITY payload must be 5 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 5
+
+      # TODO: the rest of this
     end
 
     def handle_settings f
