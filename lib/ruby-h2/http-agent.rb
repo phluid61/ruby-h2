@@ -705,7 +705,7 @@ blue "deliver #{m.inspect}"
       stream = @streams[f.sid]
       if stream
         if @is_server
-          raise SemanticError.new("no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM #FIXME: malformed => StreamError:PROTOCOL_ERROR ?
+          raise StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
         else
           # FIXME: detect same thing on RESPONSE messages (server->client)
         end
