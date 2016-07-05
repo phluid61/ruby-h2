@@ -34,6 +34,11 @@ module RUBYH2
   end
 
   class StreamError < GenericError
+    def initialize code, stream, msg=nil
+      super code, msg
+      @stream = stream
+    end
+    attr_reader :stream
   end
 
   class SemanticError < StandardError

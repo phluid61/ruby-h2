@@ -2,6 +2,7 @@
 # vim: ts=2:sts=2:sw=2
 
 require_relative 'frame-types'
+require_relative 'errors'
 
 module RUBYH2
 	class HeadersHook
@@ -46,7 +47,13 @@ module RUBYH2
 					# TODO: extract padding,priority,...
 					maybe_continue frame
 				when CONTINUATION
-					raise 'unexpected CONTINUATION frame' # FIXME
+					# RFC 7540, 6.10
+					# "A CONTINUATION frame MUST be preceded by a HEADERS,
+					#  PUSH_PROMISE or CONTINUATION frame without the END_HEADERS
+					#  flag set. A recipient that observes a violation of this
+					#  rule MUST respond with a connection error (Section 5.4.1)
+					#  of type PROTOCOL_ERROR."
+					raise ConnectionError.new(Error::PROTOCOL_ERROR, 'unexpected CONTINUATION frame')
 				else
 					emit_frame frame
 				end

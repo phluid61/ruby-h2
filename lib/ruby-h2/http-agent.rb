@@ -155,9 +155,15 @@ module RUBYH2
 cyan "@sil: _write #{hex b}"
 _write s, b rescue nil }
       dsil = FrameDeserialiser.new
-      dsil.on_frame {|f|
+      dsil.on_frame do |f|
+        begin
 brown "dsil: received #{frm f}"
-@hook << f }
+        @hook << f
+        rescue ConnectionError => e
+          @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
+          die e.code
+        end
+      end
       handle_prefaces s
       #send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
       #send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
@@ -368,6 +374,13 @@ blue "deliver #{m.inspect}"
       end
     end
 
+    ##
+    # Shut down a stream.
+    def cancel stream_id, code
+      g = Frame.new FrameTypes::RST_STREAM, 0x00, stream_id, [code].pack('N')
+      send_frame g
+    end
+
     def veto_gzip!
       return if @ext__veto_gzip
       if @ext__recv_gzip
@@ -411,6 +424,10 @@ blue "deliver #{m.inspect}"
         while preface.length < 24
           preface << s.readpartial(24 - preface.length)
         end
+        # RFC7540, Section 3.5
+        # "Clients and servers MUST treat an invalid connection preface
+        #  as a connection error (Section 5.4.1) of type
+        #  PROTOCOL_ERROR."
         raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
       else
         _write s, PREFACE
@@ -475,6 +492,11 @@ blue "deliver #{m.inspect}"
       if @first_frame_in
         # first frame has to be settings
         # FIXME: make sure this is the actual settings, not the ACK to ours
+
+        # RFC 7540, Section 3.5
+        # "Clients and servers MUST treat an invalid connection preface
+        #  as a connection error (Section 5.4.1) of type
+        #  PROTOCOL_ERROR."
         raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface - no SETTINGS') if f.type != FrameTypes::SETTINGS
         @first_frame_in = false
       end
@@ -527,6 +549,9 @@ blue "deliver #{m.inspect}"
     rescue ConnectionError => e
       @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
       die e.code
+    rescue StreamError => e
+      @logger.info "stream error [#{e.code}:#{e.stream}:#{e}] in client #{@descr}"
+      cancel e.stream, e.code
     end
 
     # tell the peer we ignored it
@@ -571,6 +596,10 @@ blue "deliver #{m.inspect}"
       ints = bytes.bytes
       pad_length = ints.shift
       rst_length = ints.length
+      # e.g. RFC 7540, Section 6.1
+      # "If the length of the padding is the length of the frame
+      #  payload or greater, the recipient MUST treat this as a
+      #  connection error (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "Pad Length #{pad_length} exceeds frame payload size #{rst_length+1}") if pad_length > rst_length
       ints[0...rst_length-pad_length].pack('C*')
     end
@@ -583,11 +612,24 @@ blue "deliver #{m.inspect}"
     end
 
     def handle_data f
+      # RFC 7540, Section 6.1
+      # "If a DATA frame is received whose stream identifier field is
+      #  0x0, the recipient MUST respond with a connection error
+      #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "DATA must be sent on stream >0") if f.sid == 0
 
       stream = @streams[f.sid]
-      raise SemanticError.new("DATA frame with invalid stream id #{f.sid}") unless stream
-      raise StreamError.new(STREAM_CLOSED, "DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
+      # RFC 7540, Section 5.1
+      # "Receiving any frame other than HEADERS or PRIORITY on a
+      #  stream in this state MUST be treated as a connection error
+      #  (Section 5.4.1) of type PROTOCOL_ERROR."
+      raise ConnectionError.new(PROTOCOL_ERROR, "received DATA frame on idle stream #{f.sid}") unless stream
+      # RFC 7540, Section 6.1
+      # "If a DATA frame is received whose stream is not in "open"
+      #  or "half-closed (local)" state, the recipient MUST
+      #  respond with a stream error (Section 5.4.2) of type
+      #  STREAM_CLOSED."
+      raise StreamError.new(STREAM_CLOSED, f.sid, "DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
 
       return if @goaway
 
@@ -618,8 +660,8 @@ blue "deliver #{m.inspect}"
       raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA must be sent on stream >0") if f.sid == 0
 
       stream = @streams[f.sid]
-      raise SemanticError.new("GZIPPED_DATA frame with invalid stream id #{f.sid}") unless stream
-      raise StreamError.new(STREAM_CLOSED, "GZIPPED_DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
+      raise ConnectionError.new(PROTOCOL_ERROR, "received GZIPPED_DATA frame on idle stream #{f.sid}") unless stream
+      raise StreamError.new(STREAM_CLOSED, f.sid, "GZIPPED_DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
 
       return if @goaway
 
@@ -639,7 +681,7 @@ blue "deliver #{m.inspect}"
         inflated_bytes = gunzip.read
       rescue Zlib::Error => e
         # bad gzip!
-        raise StreamError.new(DATA_ENCODING_ERROR, e.to_s)
+        raise StreamError.new(DATA_ENCODING_ERROR, f.sid, e.to_s)
       ensure
         veto_gzip! if inflated_bytes.nil?
       end
@@ -662,7 +704,7 @@ blue "deliver #{m.inspect}"
         else
           # FIXME: detect same thing on RESPONSE messages (server->client)
         end
-        raise StreamError.new(STREAM_CLOSED, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
+        raise StreamError.new(STREAM_CLOSED, f.sid, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
       else
         raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
         raise ConnectionError.new(PROTOCOL_ERROR, "new stream id #{f.sid} not greater than previous stream id #{@last_stream}") if f.sid <= @last_stream
@@ -761,8 +803,25 @@ yellow "--"
     end
 
     def handle_rst_stream f
+      # RFC 7540, Section 6.4
+      # "If a RST_STREAM frame is received with a stream identifier of
+      #  0x0, the recipient MUST treat this as a connection error
+      #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM on stream id #{f.sid}") if f.sid == 0
-      raise ConnectionError.new(PROTOCOL_ERROR, "RST_STREAM payload must be 4 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 4
+      # RFC 7540, Section 5.1
+      # "Receiving any frame other than HEADERS or PRIORITY on a
+      #  stream in this state MUST be treated as a connection error
+      #  (Section 5.4.1) of type PROTOCOL_ERROR."
+      # Section 6.4
+      # "If a RST_STREAM frame identifying an idle stream is received,
+      #  the recipient MUST treat this as a connection error (Section
+      #  5.4.1) of type PROTOCOL_ERROR."
+      raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM frame on idle stream #{f.sid}") unless @streams[f.sid]
+      # RFC 7540, Section 6.4
+      # "A RST_STREAM frame with a length other than 4 octets MUST be
+      #  treated as a connection error (Section 5.4.1) of type
+      #  FRAME_SIZE_ERROR."
+      raise ConnectionError.new(FRAME_SIZE_ERROR, "RST_STREAM payload must be 4 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 4
       # TODO
       error_code = f.payload.unpack('N').first
       @logger.info "received RST_STREAM (stream ID=#{f.sid}, error_code=0x#{error_code.to_s 16})"
@@ -773,13 +832,27 @@ yellow "--"
     def handle_window_update f
       # FIXME: stream states?
 
+      # RFC 7540, Section 5.1
+      # "Receiving any frame other than HEADERS or PRIORITY on a
+      #  stream in this state MUST be treated as a connection error
+      #  (Section 5.4.1) of type PROTOCOL_ERROR."
+      raise ConnectionError.new(PROTOCOL_ERROR, "received WINDOW_UPDATE frame on idle stream #{f.sid}") unless @streams[f.sid]
+
+      # RFC 7540, Section 6.9
+      # "A WINDOW_UPDATE frame with a length other than 4 octets MUST
+      #  be treated as a connection error (Section 5.4.1) of type
+      #  FRAME_SIZE_ERROR."
       raise 'connection:FRAME_SIZE_ERROR' unless f.payload.bytesize == 4
       increment = f.payload.unpack('N').first
 
       #raise 'PROTOCOL_ERROR' if increment & 0x80000000 == 0x80000000
       increment &= 0x7fffffff
 
-      raise 'stream:PROTOCOL_ERROR' if increment == 0
+      # RFC 7540, Section 6.9
+      # "A receiver MUST treat the receipt of a WINDOW_UPDATE frame
+      #  with an flow-control window increment of 0 as a stream error
+      #  (Section 5.4.2) of type PROTOCOL_ERROR"
+      raise StreamError.new(PROTOCOL_ERROR, f.sid, "WINDOW_UPDATE increment should be > 0") if increment == 0
 
       if f.sid != 0
         @streams[f.sid].window_size += increment
