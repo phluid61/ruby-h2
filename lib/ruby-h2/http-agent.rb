@@ -165,9 +165,13 @@ brown "dsil: received #{frm f}"
         end
       end
       handle_prefaces s
-      #send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}), true
-      #send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}), true
-      send_frame Settings.frame_from({Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}), true
+      #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
+      #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
+      initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}
+      if !@is_server
+        initial_settings[Settings::ENABLE_PUSH] = 0
+      end
+      send_frame Settings.frame_from(initial_settings), true
       loop do
         bytes = begin
           s.readpartial(4*1024*1024)
@@ -531,7 +535,7 @@ blue "deliver #{m.inspect}"
       when FrameTypes::SETTINGS
         handle_settings f
       when FrameTypes::PUSH_PROMISE
-        # TODO
+        handle_push_promise f
       when FrameTypes::PING
         handle_ping f
       when FrameTypes::GOAWAY
@@ -796,6 +800,25 @@ yellow "--"
         # FIXME: ensure we only send this after the initial settings
         g = Frame.new FrameTypes::SETTINGS, FLAG_ACK, 0, ''
         send_frame g
+      end
+    end
+
+    def handle_push_promise f
+      if @is_server
+        # RFC 7540, Section 8.2
+        # "A client cannot push. Thus, servers MUST treat the receipt
+        #  of a PUSH_PROMISE frame as a connection error (Section
+        #  5.4.1) of type PROTOCOL_ERROR."
+        raise ConnectionError.new(PROTOCOL_ERROR, "received forbidden PUSH_PROMISE frame from client")
+      else
+        # FIXME
+        # RFC 7540, Section 6.6
+        # "PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH
+        #  setting of the peer endpoint is set to 0. An endpoint that
+        #  has set this setting and has received acknowledgement MUST
+        #  treat the receipt of a PUSH_PROMISE frame as a connection
+        #  error (Section 5.4.1) of type PROTOCOL_ERROR."
+        raise ConnectionError.new(PROTOCOL_ERROR, "received PUSH_PROMISE frame when disabled")
       end
     end
 
