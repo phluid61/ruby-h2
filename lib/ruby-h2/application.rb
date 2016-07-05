@@ -159,6 +159,7 @@ at_exit do
         rescue Exception => e
           Application.logger.error "error in client #{sock_desc}: #{e.class.name}: #{e}"
           STDERR.puts "#{e.class.name}: #{e}", *e.backtrace.map{|bt|"\t#{bt}"}
+          socket.close rescue nil
         end
       end
     rescue => e

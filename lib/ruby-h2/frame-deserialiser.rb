@@ -2,6 +2,7 @@
 # vim: ts=2 sts=2 sw=2 expandtab
 
 require_relative 'frame'
+require_relative 'errors'
 
 module RUBYH2
   class FrameDeserialiser
@@ -37,8 +38,8 @@ module RUBYH2
         rest = bytes[HEADER_LENGTH..-1]
         len = (len0 << 16) | len1
 
-        raise "too long (#{len} > #{@max_frame_size})" if len > @max_frame_size
-        raise "reserved bit set" if sid & R_MASK != 0
+        raise ConnectionError.new(Error::FRAME_SIZE_ERROR, "frame size too long (#{len} > #{@max_frame_size})") if len > @max_frame_size
+        #raise "reserved bit set" if sid & R_MASK != 0
 
         if rest.bytesize < len
           @buffer = bytes

@@ -146,6 +146,11 @@ module RUBYH2
     #   http_client.wrap server.accept
     #
     def wrap s
+      if s.is_a? OpenSSL::SSL::SSLSocket
+        @descr = s.io.remote_address.inspect_sockaddr
+      else
+        @descr = s.remote_address.inspect_sockaddr
+      end
       @sil = FrameSerialiser.new {|b|
 cyan "@sil: _write #{hex b}"
 _write s, b rescue nil }
@@ -164,16 +169,17 @@ brown "dsil: received #{frm f}"
           nil
         end
         if bytes.nil? or bytes.empty?
-          if s.is_a? OpenSSL::SSL::SSLSocket
-            @logger.info "client disconnected from #{s.io.remote_address.inspect_sockaddr}"
-          else
-            @logger.info "client disconnected from #{s.remote_address.inspect_sockaddr}"
-          end
+          @logger.info "client disconnected from #{@descr}"
           break
         end
 red "read #{hex bytes}"
         dsil << bytes
         Thread.pass
+      end
+    rescue ConnectionError => e
+      @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
+      if !@send_lock.synchronize { @first_frame_out }
+        die e.code
       end
     ensure
       s.close rescue nil
@@ -182,12 +188,7 @@ red "read #{hex bytes}"
     ##
     # Shut down the connection.
     def shut_down
-      @shutdown_lock.synchronize {
-        return if @shutting_down
-        @shutting_down = true
-      }
-      g = Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,NO_ERROR].pack('NN')
-      send_frame g
+      die NO_ERROR
     end
 
     ##
@@ -354,6 +355,19 @@ blue "deliver #{m.inspect}"
 
   private
 
+    ##
+    # Shut down the connection.
+    def die code
+      @shutdown_lock.synchronize {
+        return if @shutting_down
+        @shutting_down = true
+      }
+      if !@send_lock.synchronize{@first_frame_out}
+        g = Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,code].pack('NN')
+        send_frame g
+      end
+    end
+
     def veto_gzip!
       return if @ext__veto_gzip
       if @ext__recv_gzip
@@ -510,6 +524,9 @@ blue "deliver #{m.inspect}"
         # ignore unrecognised/extension frames
         drop_frame f
       end
+    rescue ConnectionError => e
+      @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
+      die e.code
     end
 
     # tell the peer we ignored it
@@ -662,11 +679,15 @@ blue "deliver #{m.inspect}"
       priority, bytes = extract_priority(bytes) if f.flag? FLAG_PRIORITY
 yellow "priority: #{priority.inspect}"
       # TODO: handle priority?
-      @hpack.parse_block(bytes) do |k, v|
+      begin
+        @hpack.parse_block(bytes) do |k, v|
 yellow "  [#{k}]: [#{v}]"
-        @streams[f.sid][k] << v
-      end
+          @streams[f.sid][k] << v
+        end
 yellow "--"
+      rescue => e
+        raise ConnectionError.new(COMPRESSION_ERROR, e.to_s)
+      end
 
       # if end-of-stream, emit the message
       emit_message f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
