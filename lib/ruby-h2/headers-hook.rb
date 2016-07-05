@@ -32,6 +32,11 @@ module RUBYH2
     # :nodoc:
     def intercept_continuation frame
       if frame.type == CONTINUATION
+        # RFC 7540, Section 6.2 (and others)
+        # "A receiver MUST treat the receipt of any other type of frame
+        #  or a frame on a different stream as a connection error
+        #  (Section 5.4.1) of type PROTOCOL_ERROR."
+        raise ConnectionError.new(Error::PROTOCOL_ERROR, "expected CONTINUATION frame on stream #{@headers.sid}, got one on #{frame.sid}") if frame.sid != @headers.sid
         @headers << frame.payload
         maybe_continue frame
       else
