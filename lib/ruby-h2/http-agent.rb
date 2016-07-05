@@ -146,7 +146,7 @@ module RUBYH2
     #   http_client.wrap server.accept
     #
     def wrap s
-      if s.is_a? OpenSSL::SSL::SSLSocket
+      if defined? OpenSSL::SSL::SSLSocket and s.is_a? OpenSSL::SSL::SSLSocket
         @descr = s.io.remote_address.inspect_sockaddr
       else
         @descr = s.remote_address.inspect_sockaddr
