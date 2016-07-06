@@ -24,18 +24,18 @@ module RUBYH2
 
     # get the Header named +k+
     def [] k
-      @headers[k.downcase]
+      @headers[k]
     end
     # completely overwrite the Header named +k+
     def []= k, v
-      @headers[k.downcase].value = v
+      @headers[k].value = v
     end
     # Get the headers as a simple Hash.
     # Options for +flatten+:
     #  * +nil+ (default)  don't flatten the value
     #  * +true+           flatten the value using the default separator
     #  * other            flatten the value using this value as the separator
-    def headers flatten=true
+    def headers flatten=nil
       hsh = {}
       if !flatten
         @headers.each_pair do |k, v|

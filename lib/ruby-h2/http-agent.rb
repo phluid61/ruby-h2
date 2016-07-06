@@ -605,8 +605,54 @@ blue "deliver #{m.inspect}"
       stream.close_remote!
       @last_stream = sid
 
-      # FIXME
       headers = stream.headers
+
+      mandatory_headers = @is_server ? %w(:method :scheme :path) : %w(:status)
+      nonpseudo_headers = false
+      malformed_headers = catch(:MALFORMED) do
+        headers.each_pair do |k, v|
+          throw :MALFORMED, "uppercase header #{k.inspect}" unless k.downcase == k
+          if k.start_with? ':'
+            case k
+            when ':method',':scheme',':authority',':path'
+              throw :MALFORMED, "request pseudo-header #{k.inspect} in a response" unless @is_server
+            when ':status'
+              throw :MALFORMED, "response pseudo-header #{k.inspect} in a request" if @is_server
+            else
+              throw :MALFORMED, "invalid pseudo-header #{k.inspect}"
+            end
+            throw :MALFORMED, "pseudo-header after regular header" if nonpseudo_headers
+            throw :MALFORMED, "repeated pseudo-header" if v.is_a?(Array) && v.length > 1
+            mandatory_headers.delete k
+          else
+            nonpseudo_headers = true
+            case k
+            when 'connection'
+              throw :MALFORMED, "\"connection\" header"
+            when 'te'
+              throw :MALFORMED, "invalid \"te\" header" unless v == '' || v.downcase == 'trailers'
+            end
+          end
+        end
+        nil
+      end
+      # missing mandatory pseudo-headers
+      malformed_headers ||= "missing mandatory pseudo-headers #{mandatory_headers.inspect}" unless mandatory_headers.empty?
+
+      # RFC 7540, Section 8.1.2
+      # "A request or response containing uppercase header field
+      #  names MUST be treated as malformed ..."
+      # > S8.1.2.6 "Malformed requests ... MUST be treated as a
+      #    stream error ..."
+      raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: #{malformed_headers}") if malformed_headers
+
+      # RFC 7540, Section 8.1.2.6
+      # "A request or response is also malformed if the value of a
+      #  content-length header field does not equal the sum of the DATA
+      #  frame payload lengths that form the body."
+      cl = headers['content-length']
+      raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: content-length #{cl.inspect}, expected #{stream.body.bytesize}") if cl and (Integer(cl) rescue -1) != stream.body.bytesize
+
       if @is_server
         @request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), headers, stream.body )
       else
