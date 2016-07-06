@@ -45,6 +45,7 @@ require_relative 'hpack'
 
 require_relative 'http-request'
 require_relative 'http-response'
+require_relative 'priority-tree'
 require_relative 'stream'
 
 module RUBYH2
@@ -61,6 +62,7 @@ module RUBYH2
     include Error
 
     def initialize is_server, logger
+      @socket = nil
       # machinery state
       @is_server = is_server
       @request_proc = nil
@@ -86,6 +88,7 @@ module RUBYH2
       @ext__veto_gzip = false # set if peer doesn't gzip right
       @ext__sent_dropped_frame = {}
       @ext__peer_dropped_frame = {}
+      @priority_tree = PriorityTree.new
       # other settings
       @pings = []
       @goaway = false
@@ -146,24 +149,28 @@ module RUBYH2
     #   http_client.wrap server.accept
     #
     def wrap s
+      raise "already wrapped a socket!" if @socket
+      @socket = s
+
       if defined? OpenSSL::SSL::SSLSocket and s.is_a? OpenSSL::SSL::SSLSocket
         @descr = s.io.remote_address.inspect_sockaddr
       else
         @descr = s.remote_address.inspect_sockaddr
       end
+
       @sil = FrameSerialiser.new {|b|
 cyan "@sil: _write #{hex b}"
 _write s, b rescue nil }
-      dsil = FrameDeserialiser.new
-      dsil.on_frame do |f|
+      dsil = FrameDeserialiser.new do |f|
         begin
 brown "dsil: received #{frm f}"
           @hook << f
         rescue ConnectionError => e
-          @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
+          @logger.info "connection error [#{e.code}:#{e}] in client #{@descr} {1}"
           die e.code
         end
       end
+
       handle_prefaces s
       #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
       #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
@@ -172,11 +179,14 @@ brown "dsil: received #{frm f}"
         initial_settings[Settings::ENABLE_PUSH] = 0
       end
       send_frame Settings.frame_from(initial_settings), true
+
       loop do
         bytes = begin
           s.readpartial(4*1024*1024)
         rescue EOFError
           nil
+        rescue IOError
+          raise unless s.closed?
         end
         if bytes.nil? or bytes.empty?
           @logger.info "client disconnected from #{@descr}"
@@ -187,18 +197,19 @@ red "read #{hex bytes}"
         Thread.pass
       end
     rescue ConnectionError => e
-      @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
-      s.read_nonblock(4*1024*1024) rescue nil # flush any in-flight crud
-      if !@send_lock.synchronize { @first_frame_out }
-        die e.code
-      end
+      @logger.info "connection error [#{e.code}:#{e}] in client #{@descr} {2}"
+      die e.code
     ensure
-      s.close rescue nil
+      _close_socket
     end
 
     ##
     # Shut down the connection.
     def shut_down
+      @shutdown_lock.synchronize {
+        return if @shutting_down
+        @shutting_down = true
+      }
       die NO_ERROR
     end
 
@@ -374,14 +385,20 @@ blue "deliver #{m.inspect}"
     ##
     # Shut down the connection.
     def die code
-      @shutdown_lock.synchronize {
-        return if @shutting_down
-        @shutting_down = true
-      }
       if !@send_lock.synchronize{@first_frame_out}
         g = Frame.new FrameTypes::GOAWAY, 0x00, 0, [@last_stream,code].pack('NN')
         send_frame g
       end
+      _close_socket
+    end
+
+    # close the socket we've wrapped
+    def _close_socket
+      raise "no wrapped socket" unless @socket
+      return if @socket.closed?
+      @socket.shutdown
+      @socket.read_nonblock(4*1024*1024) rescue nil # flush any in-flight crud
+      @socket.close
     end
 
     ##
@@ -557,7 +574,7 @@ blue "deliver #{m.inspect}"
         drop_frame f
       end
     rescue ConnectionError => e
-      @logger.info "connection error [#{e.code}:#{e}] in client #{@descr}"
+      @logger.info "connection error [#{e.code}:#{e}] in client #{@descr} {3}"
       die e.code
     rescue StreamError => e
       @logger.info "stream error [#{e.code}:#{e.stream}:#{e}] in client #{@descr}"
@@ -730,7 +747,6 @@ blue "deliver #{m.inspect}"
       bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
       priority, bytes = extract_priority(bytes) if f.flag? FLAG_PRIORITY
 yellow "priority: #{priority.inspect}"
-      # TODO: handle priority?
       begin
         @hpack.parse_block(bytes) do |k, v|
 yellow "  [#{k}]: [#{v}]"
@@ -740,6 +756,9 @@ yellow "--"
       rescue => e
         raise ConnectionError.new(COMPRESSION_ERROR, e.to_s)
       end
+
+      # handle the priority -- after HPACK, in case of errors
+      @priority_tree.add f.sid, priority[:stream], priority[:weight], priority[:exclusive] if priority
 
       # if end-of-stream, emit the message
       emit_message f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
@@ -758,7 +777,8 @@ yellow "--"
       #  FRAME_SIZE_ERROR."
       raise StreamError.new(FRAME_SIZE_ERROR, f.sid, "PRIORITY payload must be 5 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 5
 
-      # TODO: the rest of this
+      priority, bytes = extract_priority(f.payload)
+      @priority_tree.add f.sid, priority[:stream], priority[:weight], priority[:exclusive]
     end
 
     def handle_settings f
