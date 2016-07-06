@@ -185,7 +185,7 @@ brown "dsil: received #{frm f}"
           s.readpartial(4*1024*1024)
         rescue EOFError
           nil
-        rescue IOError
+        rescue IOError, Errno::ECONNRESET
           raise unless s.closed?
         end
         if bytes.nil? or bytes.empty?
@@ -396,9 +396,9 @@ blue "deliver #{m.inspect}"
     def _close_socket
       raise "no wrapped socket" unless @socket
       return if @socket.closed?
-      @socket.shutdown
+      @socket.shutdown rescue nil
       @socket.read_nonblock(4*1024*1024) rescue nil # flush any in-flight crud
-      @socket.close
+      @socket.close rescue nil
     end
 
     ##
