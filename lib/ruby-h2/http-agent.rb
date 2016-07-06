@@ -923,16 +923,18 @@ yellow "--"
       # "A receiver MUST treat the receipt of a WINDOW_UPDATE frame
       #  with an flow-control window increment of 0 as a stream error
       #  (Section 5.4.2) of type PROTOCOL_ERROR"
+      #
+      # RFC 7540, Section 6.9.1
+      # "A sender MUST NOT allow a flow-control window to exceed 2^31-1
+      #  octets. [etc.]"
       if f.sid != 0
         raise StreamError.new(PROTOCOL_ERROR, f.sid, "WINDOW_UPDATE increment should be > 0") if increment == 0
+        @streams[f.sid].window_size += increment
+        raise StreamError.new(FLOW_CONTROL_ERROR, f.sid, "WINDOW_UPDATE overflow on stream #{f.sid}") if @streams[f.sid].window_size > 0x7fffffff
       else
         raise ConnectionError.new(PROTOCOL_ERROR, "WINDOW_UPDATE increment should be > 0") if increment == 0
-      end
-
-      if f.sid != 0
-        @streams[f.sid].window_size += increment
-      else
         @window_size += increment
+        raise ConnectionError.new(FLOW_CONTROL_ERROR, "WINDOW_UPDATE overflow on connection") if @window_size > 0x7fffffff
       end
 
       catch :CONNECTION_EXHAUSTED do
