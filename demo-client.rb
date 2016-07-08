@@ -51,11 +51,11 @@ logger.progname = 'demo-client'
 logger.datetime_format = '%Y-%m-%d %H:%M:%S'
 logger.sev_threshold = Logger::DEBUG
 
-require_relative 'lib/ruby-h2/http-agent'
+require_relative 'lib/ruby-h2/http-client-agent'
 require_relative 'lib/ruby-h2/http-request'
 
 $shutdown = false
-agent = RUBYH2::HTTPAgent.new(false, logger)
+agent = RUBYH2::HTTPClientAgent.new(logger)
 agent.on_response do |r|
   #puts "RECEIVED RESPONSE: #{r.inspect}"
   puts '--'

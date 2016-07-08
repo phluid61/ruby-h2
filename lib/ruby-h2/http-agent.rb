@@ -61,12 +61,9 @@ module RUBYH2
 
     include Error
 
-    def initialize is_server, logger
+    def initialize logger
       @socket = nil
       # machinery state
-      @is_server = is_server
-      @request_proc = nil
-      @response_proc = nil
       @cancel_proc = nil
       @hook = HeadersHook.new
       @hook.on_frame {|f| recv_frame f }
@@ -115,22 +112,6 @@ module RUBYH2
     attr_reader :push_to_peer
 
     ##
-    # Set the callback to be invoked when a HTTP request arrives.
-    #
-    def on_request &b
-      @request_proc = b
-      self
-    end
-
-    ##
-    # Set the callback to be invoked when a HTTP response arrives.
-    #
-    def on_response &b
-      @response_proc = b
-      self
-    end
-
-    ##
     # Set the callback to be invoked when a stream is cancelled.
     #
     # @yield stream_id, error_code
@@ -161,7 +142,7 @@ module RUBYH2
       @sil = FrameSerialiser.new {|b|
 cyan "@sil: _write #{hex b}"
 _write s, b rescue nil }
-      dsil = FrameDeserialiser.new do |f|
+      @dsil = FrameDeserialiser.new do |f|
         begin
 brown "dsil: received #{frm f}"
           @hook << f
@@ -172,12 +153,6 @@ brown "dsil: received #{frm f}"
       end
 
       handle_prefaces s
-      #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
-      #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
-      initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}
-      if !@is_server
-        initial_settings[Settings::ENABLE_PUSH] = 0
-      end
       send_frame Settings.frame_from(initial_settings), true
 
       loop do
@@ -193,7 +168,7 @@ brown "dsil: received #{frm f}"
           break
         end
 red "read #{hex bytes}"
-        dsil << bytes
+        @dsil << bytes
         Thread.pass
       end
     rescue ConnectionError => e
@@ -382,6 +357,18 @@ blue "deliver #{m.inspect}"
 
   private
 
+    def handle_prefaces s
+      raise NoMethodError, "handle_prefaces should be implemented in subclass"
+    end
+
+    ##
+    # Initial settings sent during preface
+    def initial_settings
+      #{Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
+      #{Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
+      {Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => @dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}
+    end
+
     ##
     # Shut down the connection.
     def die code
@@ -444,22 +431,6 @@ blue "deliver #{m.inspect}"
       #sock.flush
     end
 
-
-    def handle_prefaces s
-      if @is_server
-        preface = String.new.b
-        while preface.length < 24
-          preface << s.readpartial(24 - preface.length)
-        end
-        # RFC7540, Section 3.5
-        # "Clients and servers MUST treat an invalid connection preface
-        #  as a connection error (Section 5.4.1) of type
-        #  PROTOCOL_ERROR."
-        raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
-      else
-        _write s, PREFACE
-      end
-    end
 
     def send_frame g, is_first_settings=false
       if is_first_settings
@@ -607,20 +578,13 @@ blue "deliver #{m.inspect}"
 
       headers = stream.headers
 
-      mandatory_headers = @is_server ? %w(:method :scheme :path) : %w(:status)
+      mandatory_headers = mandatory_pseudoheaders
       nonpseudo_headers = false
       malformed_headers = catch(:MALFORMED) do
         headers.each_pair do |k, v|
           throw :MALFORMED, "uppercase header #{k.inspect}" unless k.downcase == k
           if k.start_with? ':'
-            case k
-            when ':method',':scheme',':authority',':path'
-              throw :MALFORMED, "request pseudo-header #{k.inspect} in a response" unless @is_server
-            when ':status'
-              throw :MALFORMED, "response pseudo-header #{k.inspect} in a request" if @is_server
-            else
-              throw :MALFORMED, "invalid pseudo-header #{k.inspect}"
-            end
+            throw :MALFORMED, "invalid pseudo-header #{k.inspect}" unless allowed_pseudoheader? k
             throw :MALFORMED, "pseudo-header after regular header" if nonpseudo_headers
             throw :MALFORMED, "repeated pseudo-header" if v.is_a?(Array) && v.length > 1
             mandatory_headers.delete k
@@ -653,11 +617,7 @@ blue "deliver #{m.inspect}"
       cl = headers['content-length']
       raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: content-length #{cl.inspect}, expected #{stream.body.bytesize}") if cl and (Integer(cl) rescue -1) != stream.body.bytesize
 
-      if @is_server
-        @request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), headers, stream.body )
-      else
-        @response_proc.call HTTPResponse.new( sid, headers.delete(':status'), headers, stream.body )
-      end
+      _do_emit sid, headers, stream.body
     end
 
     # triggered when a stream is cancelled (RST_STREAM)
@@ -772,20 +732,12 @@ blue "deliver #{m.inspect}"
     def handle_headers f
       stream = @streams[f.sid]
       if stream
-        if @is_server
-          raise StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
-        else
-          # FIXME: detect same thing on RESPONSE messages (server->client)
-        end
+        raise StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
         raise StreamError.new(STREAM_CLOSED, f.sid, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
       else
         raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
         raise ConnectionError.new(PROTOCOL_ERROR, "new stream id #{f.sid} not greater than previous stream id #{@last_stream}") if f.sid <= @last_stream
-        if @is_server
-          raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by client must be odd, received #{f.sid}") if f.sid % 2 != 1
-        else
-          raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by server must be event, received #{f.sid}") if f.sid % 2 != 0
-        end
+        ok_incoming_streamid? f.sid
         @streams[f.sid] = Stream.new(@default_window_size)
       end
       # read the header block
@@ -871,22 +823,7 @@ yellow "--"
     end
 
     def handle_push_promise f
-      if @is_server
-        # RFC 7540, Section 8.2
-        # "A client cannot push. Thus, servers MUST treat the receipt
-        #  of a PUSH_PROMISE frame as a connection error (Section
-        #  5.4.1) of type PROTOCOL_ERROR."
-        raise ConnectionError.new(PROTOCOL_ERROR, "received forbidden PUSH_PROMISE frame from client")
-      else
-        # FIXME
-        # RFC 7540, Section 6.6
-        # "PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH
-        #  setting of the peer endpoint is set to 0. An endpoint that
-        #  has set this setting and has received acknowledgement MUST
-        #  treat the receipt of a PUSH_PROMISE frame as a connection
-        #  error (Section 5.4.1) of type PROTOCOL_ERROR."
-        raise ConnectionError.new(PROTOCOL_ERROR, "received PUSH_PROMISE frame when disabled")
-      end
+      raise NoMethodError, "handle_push_promise should be implemented in subclass"
     end
 
     def handle_ping f
