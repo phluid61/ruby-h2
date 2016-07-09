@@ -41,7 +41,7 @@ class ApplicationClass
     @_get[path] = proc
   end
 
-  def handle_request r, c
+  def handle_request s, r, c
     @logger.debug "in request_hander #{r.inspect}"
     q = RUBYH2::HTTPResponse.new r.stream
     begin
@@ -88,7 +88,7 @@ HTML
       q['content-length'] = q.body.bytesize
     end
     q['date'] = Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z')
-    c.deliver q
+    c.deliver s, q
   end
 end
 
@@ -136,7 +136,7 @@ at_exit do
     hclient = RUBYH2::HTTPServerAgent.new(Application.logger)
     hclient.send_gzip! if Application.gzip?
     hclient.accept_gzip! if Application.gzip?
-    hclient.on_request {|r| Application.handle_request r, hclient }
+    hclient.on_request {|s, r| Application.handle_request s, r, hclient }
     begin
       socket = server.accept
       sock_desc = nil

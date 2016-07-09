@@ -4,15 +4,14 @@
 module RUBYH2
 
   class HTTPMessage
-    def initialize stream, virtual_headers, headers=nil, body=nil
-      @stream = stream
+    def initialize pseudoheaders, headers=nil, body=nil
       @body   = body ? body.b : String.new.b
       @pad = false
 
       # Note: ensure virtual headers are first in @headers
       headers = headers ? headers.dup : {}
       @headers = {}
-      virtual_headers.each do |h|
+      pseudoheaders.each do |h|
         m = h.sub(/^:/, '').downcase
         h = ":#{m}"
         singleton_class.send(:define_method, :"#{m}") { @headers[h] }
@@ -21,8 +20,6 @@ module RUBYH2
       end
       @headers.merge! headers
     end
-
-    attr_reader :stream
 
     attr_reader :headers
     def []= h, v

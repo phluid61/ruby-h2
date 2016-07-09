@@ -25,6 +25,20 @@ module RUBYH2
       self
     end
 
+    def respond s, q
+      deliver s, q
+      s
+    end
+
+    def push r, q
+      # FIXME
+      raise unless push_to_peer
+      s = create_push_stream
+      deliver s, r
+      deliver s, q
+      s
+    end
+
   private
 
     def handle_prefaces s
@@ -53,7 +67,7 @@ module RUBYH2
     end
 
     def _do_emit sid, headers, body
-      @request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), headers, body )
+      @request_proc.call sid, HTTPRequest.new( headers.delete(':method'), headers.delete(':path'), headers, body )
     end
 
     def handle_push_promise f

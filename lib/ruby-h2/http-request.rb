@@ -6,11 +6,11 @@ require_relative 'http-message'
 module RUBYH2
 
   class HTTPRequest < HTTPMessage
-    def initialize stream, method, path, headers=nil, body=nil
+    def initialize method, path, headers=nil, body=nil
       headers = headers ? headers.dup : {}
       headers[':method'] = method
       headers[':path'] = path
-      super stream, %w( :method :path :authority :scheme ), headers, body
+      super %w( :method :path :authority :scheme ), headers, body
     end
   end
 

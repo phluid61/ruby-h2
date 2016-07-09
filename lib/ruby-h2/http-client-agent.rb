@@ -25,6 +25,12 @@ module RUBYH2
       self
     end
 
+    def request r
+      s = create_request_stream
+      deliver s, r
+      s
+    end
+
   private
 
     def initial_settings
@@ -52,7 +58,7 @@ module RUBYH2
     end
 
     def _do_emit sid, headers, body
-      @response_proc.call HTTPResponse.new( sid, headers.delete(':status'), headers, body )
+      @response_proc.call sid, HTTPResponse.new( headers.delete(':status'), headers, body )
     end
 
     def handle_push_promise f
