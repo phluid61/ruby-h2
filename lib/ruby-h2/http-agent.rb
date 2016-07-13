@@ -532,6 +532,8 @@ blue "deliver #{m.inspect}"
         when FrameTypes::HEADERS
         when FrameTypes::PUSH_PROMISE
         when FrameTypes::CONTINUATION
+        when FrameTypes::GZIPPED_DATA
+        when FrameTypes::DROPPED_FRAME
         else
           # FIXME
           @logger.warn "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
@@ -679,18 +681,16 @@ blue "deliver #{m.inspect}"
       raise ConnectionError.new(PROTOCOL_ERROR, "DATA must be sent on stream >0") if f.sid == 0
 
       stream = @streams[f.sid]
-      # RFC 7540, Section 5.1
-      # "Receiving any frame other than HEADERS or PRIORITY on a
-      #  stream in this state MUST be treated as a connection error
-      #  (Section 5.4.1) of type PROTOCOL_ERROR."
-      raise ConnectionError.new(PROTOCOL_ERROR, "received DATA frame on idle stream #{f.sid}") unless stream
-      raise ConnectionError.new(PROTOCOL_ERROR, "received DATA frame on idle stream #{f.sid}") if stream.remote == :idle
-      # RFC 7540, Section 6.1
-      # "If a DATA frame is received whose stream is not in "open"
-      #  or "half-closed (local)" state, the recipient MUST
-      #  respond with a stream error (Section 5.4.2) of type
-      #  STREAM_CLOSED."
-      raise StreamError.new(STREAM_CLOSED, f.sid, "DATA frame received on (half-)closed stream #{f.sid}") if stream.remote == :closed
+      raise ConnectionError.new(PROTOCOL_ERROR, "DATA frame received on idle stream #{f.sid}") unless stream
+      case stream.state
+      when :open, :halfclosed_local
+      when :idle, :reserved_local, :reserved_remote
+        raise ConnectionError.new(PROTOCOL_ERROR, "DATA frame received on #{stream.state} stream #{f.sid}")
+      when :closed, :halfclosed_remote
+        raise StreamError.new(STREAM_CLOSED, f.sid, "DATA frame received on #{stream.state} stream #{f.sid}")
+      else
+        raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+      end
 
       return if @goaway
 
@@ -721,9 +721,16 @@ blue "deliver #{m.inspect}"
       raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA must be sent on stream >0") if f.sid == 0
 
       stream = @streams[f.sid]
-      raise ConnectionError.new(PROTOCOL_ERROR, "received GZIPPED_DATA frame on idle stream #{f.sid}") unless stream
-      raise ConnectionError.new(PROTOCOL_ERROR, "received GZIPPED_DATA frame on idle stream #{f.sid}") if stream.remote == :idle
-      raise StreamError.new(STREAM_CLOSED, f.sid, "GZIPPED_DATA frame received on (half-)closed stream #{f.sid}" if stream.remote == :closed
+      raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA frame received on idle stream #{f.sid}") unless stream
+      case stream.state
+      when :open, :halfclosed_local
+      when :idle, :reserved_local, :reserved_remote
+        raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA frame received on #{stream.state} stream #{f.sid}")
+      when :closed, :halfclosed_remote
+        raise StreamError.new(STREAM_CLOSED, f.sid, "GZIPPED_DATA frame received on #{stream.state} stream #{f.sid}")
+      else
+        raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+      end
 
       return if @goaway
 
@@ -759,20 +766,40 @@ blue "deliver #{m.inspect}"
     end
 
     def handle_headers f
+      raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
       stream = @streams[f.sid]
       if !stream
-        raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
         raise ConnectionError.new(PROTOCOL_ERROR, "new stream id #{f.sid} not greater than previous stream id #{@last_stream}") if f.sid <= @last_stream
         ok_incoming_streamid? f.sid
         stream = @streams[f.sid] = Stream.new(@default_window_size)
       end
-      stream.open! if stream.idle?
+
+      stream_error = nil
+
+      case stream.state
+      when :idle
+        stream.open!
+      when :reserved_remote
+        stream.close_local!
+      when :open, :halfclosed_local
+      when :halfclosed_remote
+        # Can't emit STREAM_ERROR here; we must parse the header block first
+        stream_error = StreamError.new(STREAM_CLOSED, f.sid, "HEADERS frame received on half-closed stream #{f.sid}")
+      when :closed
+        raise ConnectionError.new(STREAM_CLOSED, "HEADERS frame received on closed stream #{f.sid}")
+      when :reserved_local
+        raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS frame received on reserved stream #{f.sid}")
+      else
+        raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+      end
+
       if stream.got_headers?
-        raise StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
+        # Can't emit STREAM_ERROR here; we must parse the header block first
+        stream_error = StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
       else
         stream.got_headers!
       end
-      raise StreamError.new(STREAM_CLOSED, f.sid, "HEADER frame received on (half-)closed stream #{f.sid}") if stream.remote == :closed # FIXME
+
       # read the header block
       bytes = f.payload
       bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
@@ -787,6 +814,10 @@ yellow "--"
       rescue => e
         raise ConnectionError.new(COMPRESSION_ERROR, e.to_s)
       end
+
+      # If a STREAM_ERROR was detected before parsing the header block,
+      # emit it now.
+      raise stream_error if stream_error
 
       # handle the priority -- after HPACK, in case of errors
       @priority_tree.add f.sid, priority[:sid], priority[:weight], priority[:exclusive] if priority
