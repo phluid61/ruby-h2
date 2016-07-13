@@ -774,30 +774,32 @@ blue "deliver #{m.inspect}"
         stream = @streams[f.sid] = Stream.new(@default_window_size)
       end
 
-      stream_error = nil
+      stream_error = catch :STREAM_ERROR do
+        case stream.state
+        when :idle
+          stream.open!
+        when :reserved_remote
+          stream.close_local!
+        when :open, :halfclosed_local
+        when :halfclosed_remote
+          # Can't emit STREAM_ERROR here; we must parse the header block first
+          throw :STREAM_ERROR, StreamError.new(STREAM_CLOSED, f.sid, "HEADERS frame received on half-closed stream #{f.sid}")
+        when :closed
+          raise ConnectionError.new(STREAM_CLOSED, "HEADERS frame received on closed stream #{f.sid}")
+        when :reserved_local
+          raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS frame received on reserved stream #{f.sid}")
+        else
+          raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+        end
 
-      case stream.state
-      when :idle
-        stream.open!
-      when :reserved_remote
-        stream.close_local!
-      when :open, :halfclosed_local
-      when :halfclosed_remote
-        # Can't emit STREAM_ERROR here; we must parse the header block first
-        stream_error = StreamError.new(STREAM_CLOSED, f.sid, "HEADERS frame received on half-closed stream #{f.sid}")
-      when :closed
-        raise ConnectionError.new(STREAM_CLOSED, "HEADERS frame received on closed stream #{f.sid}")
-      when :reserved_local
-        raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS frame received on reserved stream #{f.sid}")
-      else
-        raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
-      end
+        if stream.got_headers?
+          # Can't emit STREAM_ERROR here; we must parse the header block first
+          throw :STREAM_ERROR, StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
+        else
+          stream.got_headers!
+        end
 
-      if stream.got_headers?
-        # Can't emit STREAM_ERROR here; we must parse the header block first
-        stream_error = StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
-      else
-        stream.got_headers!
+        nil
       end
 
       # read the header block
