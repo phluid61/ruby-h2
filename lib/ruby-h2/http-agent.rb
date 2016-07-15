@@ -61,12 +61,9 @@ module RUBYH2
 
     include Error
 
-    def initialize is_server, logger
+    def initialize logger
       @socket = nil
       # machinery state
-      @is_server = is_server
-      @request_proc = nil
-      @response_proc = nil
       @cancel_proc = nil
       @hook = HeadersHook.new
       @hook.on_frame {|f| recv_frame f }
@@ -115,22 +112,6 @@ module RUBYH2
     attr_reader :push_to_peer
 
     ##
-    # Set the callback to be invoked when a HTTP request arrives.
-    #
-    def on_request &b
-      @request_proc = b
-      self
-    end
-
-    ##
-    # Set the callback to be invoked when a HTTP response arrives.
-    #
-    def on_response &b
-      @response_proc = b
-      self
-    end
-
-    ##
     # Set the callback to be invoked when a stream is cancelled.
     #
     # @yield stream_id, error_code
@@ -161,7 +142,7 @@ module RUBYH2
       @sil = FrameSerialiser.new {|b|
 cyan "@sil: _write #{hex b}"
 _write s, b rescue nil }
-      dsil = FrameDeserialiser.new do |f|
+      @dsil = FrameDeserialiser.new do |f|
         begin
 brown "dsil: received #{frm f}"
           @hook << f
@@ -172,12 +153,6 @@ brown "dsil: received #{frm f}"
       end
 
       handle_prefaces s
-      #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
-      #initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
-      initial_settings = {Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}
-      if !@is_server
-        initial_settings[Settings::ENABLE_PUSH] = 0
-      end
       send_frame Settings.frame_from(initial_settings), true
 
       loop do
@@ -193,7 +168,7 @@ brown "dsil: received #{frm f}"
           break
         end
 red "read #{hex bytes}"
-        dsil << bytes
+        @dsil << bytes
         Thread.pass
       end
     rescue ConnectionError => e
@@ -211,111 +186,6 @@ red "read #{hex bytes}"
         @shutting_down = true
       }
       die NO_ERROR
-    end
-
-    ##
-    # deliver HTTPMessage object
-    def deliver m
-      @shutdown_lock.synchronize {
-        raise "delivering message after GOAWAY" if @shutting_down # FIXME
-      }
-blue "deliver #{m.inspect}"
-
-      max_send_size = [@max_frame_size, @window_size].min
-      if @streams[m.stream]
-        max_send_size = [max_send_size, @streams[m.stream].window_size].min
-      end
-
-      # create headers
-      hblock = @hpack.create_block m.headers
-      # split header block into chunks and deliver
-      chunks = hblock.scan(/.{1,#{max_send_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
-      if chunks.empty?
-        # I cast no judgement here, but shouldn't there be some headers..?
-        chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
-      else
-        chunks.first[:type] = FrameTypes::HEADERS
-        chunks.last[:flags] |= FLAG_END_HEADERS
-      end
-      # without data, the HEADERS ends the stream
-      if m.body.empty?
-        chunks.last[:flags] |= FLAG_END_STREAM
-      end
-      # pad out to %256 bytes if required
-      _pad chunks.last if m.pad?
-      # send the headers frame(s)
-      chunks.each do |chunk|
-        g = Frame.new chunk[:type], chunk[:flags], m.stream, chunk[:bytes]
-        send_frame g
-      end
-
-      # create data
-      if !m.body.empty?
-        chunks = []
-        if send_gzip?
-          type = FrameTypes::GZIPPED_DATA
-          bytes = m.body.b
-
-          until bytes.empty?
-            # binary search for biggest data chunk that fits when gzipped
-            left = 0
-            right = bytes.bytesize
-            maxright = right
-            best = nil
-            rest = bytes
-
-            loop do
-              gzipped = ''.b
-              gzip = Zlib::GzipWriter.new(StringIO.new gzipped)
-              gzip.write bytes[0...right]
-              gzip.close
-
-              rest = bytes[right..-1]
-
-              if gzipped.bytesize > max_send_size
-                # try a smaller sample
-                maxright = right
-                right = maxright - (maxright - left) / 2
-                # is this a good as we'll get?
-                break if right == left
-              elsif gzipped.bytesize == max_send_size
-                # perfect!
-                best = gzipped
-                break
-              else
-                # try a bigger sample
-                best = gzipped
-
-                left = right
-                right = maxright - (maxright - left) / 2
-                # is this a good as we'll get?
-                break if right == left
-              end
-            end
-            bytes = rest
-
-            # create chunk
-            chunk = {flags: 0, bytes: best}
-            # pad out to %256 bytes if required
-            _pad chunk if m.pad?
-            # add to list
-            chunks << chunk
-          end
-        else
-          type = FrameTypes::DATA
-          chunks = m.body.b.scan(/.{1,#{max_send_size}}/m).map{|c| {flags: 0, bytes: c} }
-          # pad out to %256 bytes if required
-          _pad chunks.last if m.pad?
-        end
-        chunks.last[:flags] |= FLAG_END_STREAM
-        chunks.each do |chunk|
-          g = Frame.new type, chunk[:flags], m.stream, chunk[:bytes]
-          send_frame g
-        end
-      end
-
-      # half-close
-      @streams[m.stream].close_local!
     end
 
     ##
@@ -380,7 +250,164 @@ blue "deliver #{m.inspect}"
       end
     end
 
+    def create_request_stream
+      s = if @streams.empty?
+        1
+      else
+        t = @streams.keys.last
+        t + 1 + (t % 2)
+      end
+
+      @streams[s] = Stream.new(@default_window_size)
+      s
+    end
+
+    def create_push_stream
+      s = if @streams.empty?
+        2
+      else
+        t = @streams.keys.last
+        t + 2 - (t % 2)
+      end
+
+      @streams[s] = Stream.new(@default_window_size)
+      s
+    end
+
+    def open_stream s
+      stream = @streams[s]
+      raise unless stream
+      stream.open!
+      s
+    end
+
+    def reserve_stream s
+      stream = @streams[s]
+      raise unless stream
+      stream.reserve_local!
+      s
+    end
+
   private
+
+    ##
+    # deliver HTTPMessage object
+    def deliver s, m
+      @shutdown_lock.synchronize {
+        raise "delivering message after GOAWAY" if @shutting_down # FIXME
+      }
+blue "deliver #{m.inspect}"
+
+      # FIXME
+      stream = @streams[s]
+      raise unless stream
+      raise unless stream.local == :open
+
+      max_send_size = [@max_frame_size, @window_size, stream.window_size].min
+
+      # create headers
+      hblock = @hpack.create_block m.headers
+      # split header block into chunks and deliver
+      chunks = hblock.scan(/.{1,#{max_send_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
+      if chunks.empty?
+        # I cast no judgement here, but shouldn't there be some headers..?
+        chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
+      else
+        chunks.first[:type] = FrameTypes::HEADERS
+        chunks.last[:flags] |= FLAG_END_HEADERS
+      end
+      # without data, the HEADERS ends the stream
+      if m.body.empty?
+        chunks.last[:flags] |= FLAG_END_STREAM
+      end
+      # pad out to %256 bytes if required
+      _pad chunks.last if m.pad?
+      # send the headers frame(s)
+      chunks.each do |chunk|
+        g = Frame.new chunk[:type], chunk[:flags], s, chunk[:bytes]
+        send_frame g
+      end
+
+      # create data
+      if !m.body.empty?
+        chunks = []
+        if send_gzip?
+          type = FrameTypes::GZIPPED_DATA
+          bytes = m.body.b
+
+          until bytes.empty?
+            # binary search for biggest data chunk that fits when gzipped
+            left = 0
+            right = bytes.bytesize
+            maxright = right
+            best = nil
+            rest = bytes
+
+            loop do
+              gzipped = ''.b
+              gzip = Zlib::GzipWriter.new(StringIO.new gzipped)
+              gzip.write bytes[0...right]
+              gzip.close
+
+              rest = bytes[right..-1]
+
+              if gzipped.bytesize > max_send_size
+                # try a smaller sample
+                maxright = right
+                right = maxright - (maxright - left) / 2
+                # is this a good as we'll get?
+                break if right == left
+              elsif gzipped.bytesize == max_send_size
+                # perfect!
+                best = gzipped
+                break
+              else
+                # try a bigger sample
+                best = gzipped
+
+                left = right
+                right = maxright - (maxright - left) / 2
+                # is this a good as we'll get?
+                break if right == left
+              end
+            end
+            bytes = rest
+
+            # create chunk
+            chunk = {flags: 0, bytes: best}
+            # pad out to %256 bytes if required
+            _pad chunk if m.pad?
+            # add to list
+            chunks << chunk
+          end
+        else
+          type = FrameTypes::DATA
+          chunks = m.body.b.scan(/.{1,#{max_send_size}}/m).map{|c| {flags: 0, bytes: c} }
+          # pad out to %256 bytes if required
+          _pad chunks.last if m.pad?
+        end
+        chunks.last[:flags] |= FLAG_END_STREAM
+        chunks.each do |chunk|
+          g = Frame.new type, chunk[:flags], s, chunk[:bytes]
+          send_frame g
+        end
+      end
+
+      # half-close
+      stream.close_local!
+    end
+
+    def handle_prefaces s
+      raise NoMethodError, "handle_prefaces should be implemented in subclass"
+    end
+
+    ##
+    # Initial settings sent during preface
+    def initial_settings
+      #{Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
+      #{Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
+      {Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => @dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}
+    end
 
     ##
     # Shut down the connection.
@@ -404,6 +431,7 @@ blue "deliver #{m.inspect}"
     ##
     # Shut down a stream.
     def cancel stream_id, code
+      # TODO: @streams[stream_id].close_local!
       g = Frame.new FrameTypes::RST_STREAM, 0x00, stream_id, [code].pack('N')
       send_frame g
     end
@@ -445,22 +473,6 @@ blue "deliver #{m.inspect}"
     end
 
 
-    def handle_prefaces s
-      if @is_server
-        preface = String.new.b
-        while preface.length < 24
-          preface << s.readpartial(24 - preface.length)
-        end
-        # RFC7540, Section 3.5
-        # "Clients and servers MUST treat an invalid connection preface
-        #  as a connection error (Section 5.4.1) of type
-        #  PROTOCOL_ERROR."
-        raise ConnectionError.new(PROTOCOL_ERROR, 'invalid preface') if preface != PREFACE
-      else
-        _write s, PREFACE
-      end
-    end
-
     def send_frame g, is_first_settings=false
       if is_first_settings
         # Unset @first_frame_out and transmit said first frame, atomically
@@ -493,7 +505,7 @@ blue "deliver #{m.inspect}"
         @sil << g
       else
         s = @streams[g.sid]
-        s = @streams[g.sid] = Stream.new(@default_window_size) if !s
+        raise unless s # FIXME
         q = @window_queue[g.sid]
         if q && !q.empty?
           # there's a queue; wait for a WINDOW_UPDATE
@@ -534,6 +546,8 @@ blue "deliver #{m.inspect}"
         when FrameTypes::HEADERS
         when FrameTypes::PUSH_PROMISE
         when FrameTypes::CONTINUATION
+        when FrameTypes::GZIPPED_DATA
+        when FrameTypes::DROPPED_FRAME
         else
           # FIXME
           @logger.warn "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
@@ -607,20 +621,13 @@ blue "deliver #{m.inspect}"
 
       headers = stream.headers
 
-      mandatory_headers = @is_server ? %w(:method :scheme :path) : %w(:status)
+      mandatory_headers = mandatory_pseudoheaders
       nonpseudo_headers = false
       malformed_headers = catch(:MALFORMED) do
         headers.each_pair do |k, v|
           throw :MALFORMED, "uppercase header #{k.inspect}" unless k.downcase == k
           if k.start_with? ':'
-            case k
-            when ':method',':scheme',':authority',':path'
-              throw :MALFORMED, "request pseudo-header #{k.inspect} in a response" unless @is_server
-            when ':status'
-              throw :MALFORMED, "response pseudo-header #{k.inspect} in a request" if @is_server
-            else
-              throw :MALFORMED, "invalid pseudo-header #{k.inspect}"
-            end
+            throw :MALFORMED, "invalid pseudo-header #{k.inspect}" unless allowed_pseudoheader? k
             throw :MALFORMED, "pseudo-header after regular header" if nonpseudo_headers
             throw :MALFORMED, "repeated pseudo-header" if v.is_a?(Array) && v.length > 1
             mandatory_headers.delete k
@@ -653,11 +660,7 @@ blue "deliver #{m.inspect}"
       cl = headers['content-length']
       raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: content-length #{cl.inspect}, expected #{stream.body.bytesize}") if cl and (Integer(cl) rescue -1) != stream.body.bytesize
 
-      if @is_server
-        @request_proc.call HTTPRequest.new( sid, headers.delete(':method'), headers.delete(':path'), headers, stream.body )
-      else
-        @response_proc.call HTTPResponse.new( sid, headers.delete(':status'), headers, stream.body )
-      end
+      _do_emit sid, headers, stream.body
     end
 
     # triggered when a stream is cancelled (RST_STREAM)
@@ -678,10 +681,10 @@ blue "deliver #{m.inspect}"
     end
 
     def extract_priority bytes
-      stream, weight, bytes = bytes.unpack('NCa*')
-      exclusive = (stream & 0x80000000) == 0x80000000
-      stream &= 0x7fffffff
-      [{exclusive:exclusive, stream:stream, weight:weight}, bytes]
+      sid, weight, bytes = bytes.unpack('NCa*')
+      exclusive = (sid & 0x80000000) == 0x80000000
+      sid &= 0x7fffffff
+      [{exclusive:exclusive, sid:sid, weight:weight}, bytes]
     end
 
     def handle_data f
@@ -692,17 +695,16 @@ blue "deliver #{m.inspect}"
       raise ConnectionError.new(PROTOCOL_ERROR, "DATA must be sent on stream >0") if f.sid == 0
 
       stream = @streams[f.sid]
-      # RFC 7540, Section 5.1
-      # "Receiving any frame other than HEADERS or PRIORITY on a
-      #  stream in this state MUST be treated as a connection error
-      #  (Section 5.4.1) of type PROTOCOL_ERROR."
-      raise ConnectionError.new(PROTOCOL_ERROR, "received DATA frame on idle stream #{f.sid}") unless stream
-      # RFC 7540, Section 6.1
-      # "If a DATA frame is received whose stream is not in "open"
-      #  or "half-closed (local)" state, the recipient MUST
-      #  respond with a stream error (Section 5.4.2) of type
-      #  STREAM_CLOSED."
-      raise StreamError.new(STREAM_CLOSED, f.sid, "DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
+      raise ConnectionError.new(PROTOCOL_ERROR, "DATA frame received on idle stream #{f.sid}") unless stream
+      case stream.state
+      when :open, :halfclosed_local
+      when :idle, :reserved_local, :reserved_remote
+        raise ConnectionError.new(PROTOCOL_ERROR, "DATA frame received on #{stream.state} stream #{f.sid}")
+      when :closed, :halfclosed_remote
+        raise StreamError.new(STREAM_CLOSED, f.sid, "DATA frame received on #{stream.state} stream #{f.sid}")
+      else
+        raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+      end
 
       return if @goaway
 
@@ -733,8 +735,16 @@ blue "deliver #{m.inspect}"
       raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA must be sent on stream >0") if f.sid == 0
 
       stream = @streams[f.sid]
-      raise ConnectionError.new(PROTOCOL_ERROR, "received GZIPPED_DATA frame on idle stream #{f.sid}") unless stream
-      raise StreamError.new(STREAM_CLOSED, f.sid, "GZIPPED_DATA frame received on (half-)closed stream #{f.sid}") unless stream.open_remote?
+      raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA frame received on idle stream #{f.sid}") unless stream
+      case stream.state
+      when :open, :halfclosed_local
+      when :idle, :reserved_local, :reserved_remote
+        raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA frame received on #{stream.state} stream #{f.sid}")
+      when :closed, :halfclosed_remote
+        raise StreamError.new(STREAM_CLOSED, f.sid, "GZIPPED_DATA frame received on #{stream.state} stream #{f.sid}")
+      else
+        raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+      end
 
       return if @goaway
 
@@ -770,24 +780,42 @@ blue "deliver #{m.inspect}"
     end
 
     def handle_headers f
+      raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
       stream = @streams[f.sid]
-      if stream
-        if @is_server
-          raise StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
-        else
-          # FIXME: detect same thing on RESPONSE messages (server->client)
-        end
-        raise StreamError.new(STREAM_CLOSED, f.sid, "HEADER frame received on (half-)closed stream #{f.sid}") unless stream.open_remote? # FIXME
-      else
-        raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS must be sent on stream >0") if f.sid == 0
+      if !stream
         raise ConnectionError.new(PROTOCOL_ERROR, "new stream id #{f.sid} not greater than previous stream id #{@last_stream}") if f.sid <= @last_stream
-        if @is_server
-          raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by client must be odd, received #{f.sid}") if f.sid % 2 != 1
-        else
-          raise ConnectionError.new(PROTOCOL_ERROR, "streams initiated by server must be event, received #{f.sid}") if f.sid % 2 != 0
-        end
-        @streams[f.sid] = Stream.new(@default_window_size)
+        ok_incoming_streamid? f.sid
+        stream = @streams[f.sid] = Stream.new(@default_window_size)
       end
+
+      stream_error = catch :STREAM_ERROR do
+        case stream.state
+        when :idle
+          stream.open!
+        when :reserved_remote
+          stream.close_local!
+        when :open, :halfclosed_local
+        when :halfclosed_remote
+          # Can't emit STREAM_ERROR here; we must parse the header block first
+          throw :STREAM_ERROR, StreamError.new(STREAM_CLOSED, f.sid, "HEADERS frame received on half-closed stream #{f.sid}")
+        when :closed
+          raise ConnectionError.new(STREAM_CLOSED, "HEADERS frame received on closed stream #{f.sid}")
+        when :reserved_local
+          raise ConnectionError.new(PROTOCOL_ERROR, "HEADERS frame received on reserved stream #{f.sid}")
+        else
+          raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
+        end
+
+        if stream.got_headers?
+          # Can't emit STREAM_ERROR here; we must parse the header block first
+          throw :STREAM_ERROR, StreamError.new(PROTOCOL_ERROR, f.sid, "no END_STREAM on trailing headers") unless f.flag? FLAG_END_STREAM
+        else
+          stream.got_headers!
+        end
+
+        nil
+      end
+
       # read the header block
       bytes = f.payload
       bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
@@ -796,18 +824,22 @@ yellow "priority: #{priority.inspect}"
       begin
         @hpack.parse_block(bytes) do |k, v|
 yellow "  [#{k}]: [#{v}]"
-          @streams[f.sid][k] << v
+          stream[k] << v
         end
 yellow "--"
       rescue => e
         raise ConnectionError.new(COMPRESSION_ERROR, e.to_s)
       end
 
+      # If a STREAM_ERROR was detected before parsing the header block,
+      # emit it now.
+      raise stream_error if stream_error
+
       # handle the priority -- after HPACK, in case of errors
-      @priority_tree.add f.sid, priority[:stream], priority[:weight], priority[:exclusive] if priority
+      @priority_tree.add f.sid, priority[:sid], priority[:weight], priority[:exclusive] if priority
 
       # if end-of-stream, emit the message
-      emit_message f.sid, @streams[f.sid] if !@goaway and f.flag? FLAG_END_STREAM
+      emit_message f.sid, stream if !@goaway and f.flag? FLAG_END_STREAM
     end
 
     def handle_priority f
@@ -824,7 +856,7 @@ yellow "--"
       raise StreamError.new(FRAME_SIZE_ERROR, f.sid, "PRIORITY payload must be 5 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 5
 
       priority, bytes = extract_priority(f.payload)
-      @priority_tree.add f.sid, priority[:stream], priority[:weight], priority[:exclusive]
+      @priority_tree.add f.sid, priority[:sid], priority[:weight], priority[:exclusive]
     end
 
     def handle_settings f
@@ -871,22 +903,7 @@ yellow "--"
     end
 
     def handle_push_promise f
-      if @is_server
-        # RFC 7540, Section 8.2
-        # "A client cannot push. Thus, servers MUST treat the receipt
-        #  of a PUSH_PROMISE frame as a connection error (Section
-        #  5.4.1) of type PROTOCOL_ERROR."
-        raise ConnectionError.new(PROTOCOL_ERROR, "received forbidden PUSH_PROMISE frame from client")
-      else
-        # FIXME
-        # RFC 7540, Section 6.6
-        # "PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH
-        #  setting of the peer endpoint is set to 0. An endpoint that
-        #  has set this setting and has received acknowledgement MUST
-        #  treat the receipt of a PUSH_PROMISE frame as a connection
-        #  error (Section 5.4.1) of type PROTOCOL_ERROR."
-        raise ConnectionError.new(PROTOCOL_ERROR, "received PUSH_PROMISE frame when disabled")
-      end
+      raise NoMethodError, "handle_push_promise should be implemented in subclass"
     end
 
     def handle_ping f

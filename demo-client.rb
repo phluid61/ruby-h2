@@ -51,12 +51,12 @@ logger.progname = 'demo-client'
 logger.datetime_format = '%Y-%m-%d %H:%M:%S'
 logger.sev_threshold = Logger::DEBUG
 
-require_relative 'lib/ruby-h2/http-agent'
+require_relative 'lib/ruby-h2/http-client-agent'
 require_relative 'lib/ruby-h2/http-request'
 
 $shutdown = false
-agent = RUBYH2::HTTPAgent.new(false, logger)
-agent.on_response do |r|
+agent = RUBYH2::HTTPClientAgent.new(logger)
+agent.on_response do |sid,r|
   #puts "RECEIVED RESPONSE: #{r.inspect}"
   puts '--'
   r.headers.each_pair do |k,v|
@@ -84,7 +84,7 @@ headers = {
   ':authority' => $authority,
   'user-agent' => 'TestClient/1.0',
 }
-agent.deliver RUBYH2::HTTPRequest.new(1, 'GET', '/', headers)
+agent.request RUBYH2::HTTPRequest.new('GET', '/', headers)
 
 agent.ping '33333333'
 
@@ -95,7 +95,7 @@ headers = {
   ':authority' => $authority,
   'user-agent' => 'TestClient/1.0',
 }
-agent.deliver RUBYH2::HTTPRequest.new(3, 'GET', '/nonesuch', headers)
+agent.request RUBYH2::HTTPRequest.new('GET', '/nonesuch', headers)
 
 sleep 0.5
 
@@ -107,7 +107,7 @@ headers = {
   'content-type' => 'text/plain',
   'content-length' => payload.bytesize.to_s,
 }
-agent.deliver RUBYH2::HTTPRequest.new(5, 'POST', '/', headers, payload)
+agent.request RUBYH2::HTTPRequest.new('POST', '/', headers, payload)
 
 sleep 0.5
 
@@ -116,7 +116,7 @@ headers = {
   ':authority' => $authority,
   'user-agent' => 'TestClient/1.0',
 }
-agent.deliver RUBYH2::HTTPRequest.new(7, 'GET', '/padded', headers)
+agent.request RUBYH2::HTTPRequest.new('GET', '/padded', headers)
 
 sleep 1
 
@@ -129,7 +129,7 @@ headers = {
   ':authority' => $authority,
   'user-agent' => 'TestClient/1.0',
 }
-agent.deliver RUBYH2::HTTPRequest.new(9, 'GET', '/', headers)
+agent.request RUBYH2::HTTPRequest.new('GET', '/', headers)
 
 sleep 0.5
 
@@ -138,7 +138,7 @@ headers = {
   ':authority' => $authority,
   'user-agent' => 'TestClient/1.0',
 }
-agent.deliver RUBYH2::HTTPRequest.new(11, 'GET', '/padded', headers)
+agent.request RUBYH2::HTTPRequest.new('GET', '/padded', headers)
 
 sleep 5
 
