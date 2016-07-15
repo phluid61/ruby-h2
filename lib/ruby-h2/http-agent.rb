@@ -274,6 +274,20 @@ red "read #{hex bytes}"
       s
     end
 
+    def open_stream s
+      stream = @streams[s]
+      raise unless stream
+      stream.open!
+      s
+    end
+
+    def reserve_stream s
+      stream = @streams[s]
+      raise unless stream
+      stream.reserve_local!
+      s
+    end
+
   private
 
     ##
@@ -287,7 +301,7 @@ blue "deliver #{m.inspect}"
       # FIXME
       stream = @streams[s]
       raise unless stream
-      raise unless stream.local == :idle
+      raise unless stream.local == :open
 
       max_send_size = [@max_frame_size, @window_size, stream.window_size].min
 

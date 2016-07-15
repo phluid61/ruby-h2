@@ -34,6 +34,7 @@ module RUBYH2
       # FIXME
       raise unless push_to_peer
       s = create_push_stream
+      reserve_stream s
       deliver s, r
       deliver s, q
       s

@@ -27,6 +27,7 @@ module RUBYH2
 
     def request r
       s = create_request_stream
+      open_stream s
       deliver s, r
       s
     end
