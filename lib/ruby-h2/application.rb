@@ -43,7 +43,7 @@ class ApplicationClass
 
   def handle_request s, r, c
     @logger.debug "in request_hander #{r.inspect}"
-    q = RUBYH2::HTTPResponse.new r.stream
+    q = RUBYH2::HTTPResponse.new s
     begin
       case r.method.upcase
       when 'GET', 'HEAD'
@@ -88,7 +88,7 @@ HTML
       q['content-length'] = q.body.bytesize
     end
     q['date'] = Time.now.utc.strftime('%a, %e %b %Y %H:%M:%S %Z')
-    c.deliver s, q
+    c.respond s, q
   end
 end
 
