@@ -67,7 +67,7 @@ HTML
           q.instance_variable_set :@body, ''
         end
       else
-          q = RUBYH2::HTTPResponse.new r.stream #...
+          q = RUBYH2::HTTPResponse.new s #...
           q.status = 405
           q['content-type'] = 'text/html'
           q << <<HTML
