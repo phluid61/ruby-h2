@@ -61,7 +61,16 @@ module RUBYH2
 
     include Error
 
-    def initialize logger
+    def initialize logger=nil
+      if logger.nil?
+        logger = Object.new
+        def logger.debug(*args) end
+        def logger.info(*args) end
+        def logger.warn(*args) end
+        def logger.error(*args) end
+        def logger.fatal(*args) end
+      end
+
       @socket = nil
       # machinery state
       @cancel_proc = nil
@@ -70,27 +79,27 @@ module RUBYH2
       @hpack = HPack.new
       @logger = logger
       # H2 state
-      @window_queue = {}
-      @first_frame_in = true
-      @first_frame_out = true
+      @window_queue = {}      # outgoing message queue (buffered until WINDOW_UPDATE)
+      @first_frame_in = true  # true until we receive the preamble SETTINGS from the peer
+      @first_frame_out = true # true until we deliver the preamble SETTINGS
       @streams = {}
-      @default_window_size = 65535
-      @window_size = @default_window_size
-      @max_frame_size = 16384
-      @max_streams = nil
-      @push_to_peer = true
+      @default_window_size = 65535 # incoming INITIAL_WINDOW_SIZE value
+      @window_size = @default_window_size # how much space remains in the connection window
+      @max_frame_size = 16384 # incoming MAX_FRAME_SIZE value
+      @max_streams = nil      # incoming MAX_CONCURRENT_STREAMS value
+      @push_to_peer = true    # incoming ENABLE_PUSH value
       @ext__send_gzip = true  # are we config'd to send gzip data?
-      @ext__peer_gzip = false # is peer config'd to accept gzip data?
+      @ext__peer_gzip = false # is peer config'd to accept gzip data? (incoming ACCEPT_GZIP_DATA)
       @ext__recv_gzip = true  # are we config'd to accept gzip data?
       @ext__veto_gzip = false # set if peer doesn't gzip right
-      @ext__sent_dropped_frame = {}
-      @ext__peer_dropped_frame = {}
+      @ext__sent_dropped_frame = {} # frame types we've told the peer we're ignoring
+      @ext__peer_dropped_frame = {} # frame types the peer has said it's ignoring
       @priority_tree = PriorityTree.new
       # other settings
-      @pings = []
-      @goaway = false
-      @last_stream = 0 # last incoming stream handed up to application
-      @shutting_down = false
+      @pings = []      # pings we've sent
+      @goaway = false  # false until incoming GOAWAY, then Last-Stream-ID
+      @last_stream = 0 # last incoming stream handed up to application; sent in GOAWAY
+      @shutting_down = false # false until we call #shut_down and set a GOAWAY
 
       @send_lock = Mutex.new
       @shutdown_lock = Mutex.new
