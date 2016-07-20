@@ -96,10 +96,6 @@ module RUBYH2
       @shutdown_lock = Mutex.new
     end
 
-    def inspect
-      "\#<HTTPAgent @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_peer=#{@push_to_peer.inspect}>"
-    end
-
     ##
     # True if we've sent or received a GOAWAY frame.
     #
