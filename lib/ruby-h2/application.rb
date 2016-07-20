@@ -53,7 +53,6 @@ class ApplicationClass
           q['content-type'] = 'text/html'
           q << callback.call(r, q)
         else
-          q = RUBYH2::HTTPResponse.new r.stream # wipe any changes from the handler
           q.status = 404
           q['content-type'] = 'text/html'
           q << <<HTML
@@ -67,10 +66,9 @@ HTML
           q.instance_variable_set :@body, ''
         end
       else
-          q = RUBYH2::HTTPResponse.new s #...
-          q.status = 405
-          q['content-type'] = 'text/html'
-          q << <<HTML
+        q.status = 405
+        q['content-type'] = 'text/html'
+        q << <<HTML
 <!DOCTYPE html>
 <html lang="en"><head><title>Not Allowed</title></head><body><h1>Not Allowed</h1><p>Method <tt>#{r.method}</tt> not allowed.</p></body></html>
 HTML
@@ -78,7 +76,7 @@ HTML
       end
     rescue Exception => x
       STDERR.puts "#{x.class.name}: #{x}", *x.backtrace.map{|bt|"\t#{bt}"}
-      q = RUBYH2::HTTPResponse.new r.stream #...
+      q = RUBYH2::HTTPResponse.new s # wipe any changes from the handler
       q.status = 500
       q['content-type'] = 'text/html'
           q << <<HTML
