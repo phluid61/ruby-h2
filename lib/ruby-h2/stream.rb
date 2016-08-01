@@ -80,9 +80,9 @@ module RUBYH2
       when [:open, :open]
         :open
       when [:open, :closed]
-        :halfclosed_remote
+        :half_closed_remote
       when [:closed, :open]
-        :halfclosed_local
+        :half_closed_local
       when [:closed, :closed]
         :closed
       end

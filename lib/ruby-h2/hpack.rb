@@ -76,6 +76,11 @@ module RUBYH2
       end
     end
 
+    # mostly used for debugging
+    def dynamic_table
+      @dtable.map{|e| e.to_a }
+    end
+
     def self.static_table
       @@stable ||= [
         RUBYH2::TableEntry.new(':authority', ''),
@@ -150,11 +155,26 @@ module RUBYH2
       @table_out = RUBYH2::Table.new
     end
 
+    def max_size_in
+      @table_in.max_size
+    end
+    def max_size_out
+      @table_out.max_size
+    end
+
     def max_size_in= i
       @table_in.max_size = i
     end
     def max_size_out= i
       @table_out.max_size = i
+    end
+
+    # for debug
+    def dynamic_table_in
+      @table_in.dynamic_table
+    end
+    def dynamic_table_out
+      @table_out.dynamic_table
     end
 
     def parse_block bytes, &b

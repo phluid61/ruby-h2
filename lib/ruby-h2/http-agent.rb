@@ -34,6 +34,7 @@ end
 require 'thread'
 require 'zlib'
 require 'stringio'
+require 'json'
 
 require_relative 'frame-deserialiser'
 require_relative 'frame-serialiser'
@@ -78,6 +79,7 @@ module RUBYH2
       @window_size = @default_window_size
       @max_frame_size = 16384
       @max_streams = nil
+      @max_header_list_size = nil
       @push_to_peer = true
       @ext__send_gzip = true  # are we config'd to send gzip data?
       @ext__peer_gzip = false # is peer config'd to accept gzip data?
@@ -94,10 +96,6 @@ module RUBYH2
 
       @send_lock = Mutex.new
       @shutdown_lock = Mutex.new
-    end
-
-    def inspect
-      "\#<HTTPAgent @window_queue=#{@window_queue.inspect}, @streams=#{@streams.inspect}, @default_window_size=#{@default_window_size.inspect}, @window_size=#{@window_size.inspect}, @max_frame_size=#{@max_frame_size.inspect}, @max_streams=#{@max_streams.inspect}, @push_to_peer=#{@push_to_peer.inspect}>"
     end
 
     ##
@@ -288,6 +286,53 @@ red "read #{hex bytes}"
       s
     end
 
+    def interop_state q
+      state = {}
+
+      # my advertised settings (assumes they're ACKed)
+      state['settings'] = Hash[initial_settings.map{|k,v| [Settings.name(k), v] }]
+
+      # peer's settings
+      state['peerSettings'] = {
+        'SETTINGS_HEADER_TABLE_SIZE' => @hpack.max_size_out,
+        'SETTINGS_ENABLE_PUSH' => @push_to_peer ? 1 : 0,
+        'SETTINGS_INITIAL_WINDOW_SIZE' => @default_window_size,
+        'SETTINGS_MAX_FRAME_SIZE' => @max_frame_size,
+      }
+      state['peerSettings']['SETTINGS_MAX_CONCURRENT_STREAMS'] = @max_streams if @max_streams
+      state['peerSettings']['SETTINGS_MAX_HEADER_LIST_SIZE'] = @max_header_list_size if @max_header_list_size
+      state['peerSettings']['SETTINGS_ACCEPT_GZIPPED_DATA'] = 1 if @ext__peer_gzip
+
+      # connection window sizes
+      state['connFlowOut'] = @window_size
+      state['connFlowIn'] = 0x20000
+
+      # streams
+      state['streams'] = {}
+      @streams.each do |sid, stream|
+        next if stream.closed?
+        state['streams'][sid.to_s] = {
+          'state' => stream.state.to_s.upcase,
+          'flowIn' => 0x20000,
+          'flowOut' => stream.window_size,
+        }
+      end
+
+      # HPACK state
+      state['hpack'] = {
+        'inbound_table_size' => @hpack.max_size_in,
+        'inbound_dynamic_header_table' => @hpack.dynamic_table_in,
+        'outbound_table_size' => @hpack.max_size_out,
+        'outbound_dynamic_header_table' => @hpack.dynamic_table_out,
+      }
+
+      # OOB window size headers
+      q['conn-flow-out'] = @window_size
+      q['conn-flow-in'] = 0x20000
+
+      JSON.pretty_generate state
+    end
+
   private
 
     ##
@@ -406,7 +451,11 @@ blue "deliver #{m.inspect}"
     def initial_settings
       #{Settings::INITIAL_WINDOW_SIZE => 0x7fffffff, Settings::ACCEPT_GZIPPED_DATA => 1}
       #{Settings::INITIAL_WINDOW_SIZE => 0x7fffffff}
-      {Settings::INITIAL_WINDOW_SIZE => 0x20000, Settings::MAX_FRAME_SIZE => @dsil.max_frame_size, Settings::ACCEPT_GZIPPED_DATA => 1}
+      {
+        Settings::INITIAL_WINDOW_SIZE => 0x20000,
+        Settings::MAX_FRAME_SIZE => @dsil.max_frame_size,
+        Settings::ACCEPT_GZIPPED_DATA => (!@ext__veto_gzip && @ext__recv_gzip) ? 1 : 0,
+      }
     end
 
     ##
@@ -697,10 +746,10 @@ blue "deliver #{m.inspect}"
       stream = @streams[f.sid]
       raise ConnectionError.new(PROTOCOL_ERROR, "DATA frame received on idle stream #{f.sid}") unless stream
       case stream.state
-      when :open, :halfclosed_local
+      when :open, :half_closed_local
       when :idle, :reserved_local, :reserved_remote
         raise ConnectionError.new(PROTOCOL_ERROR, "DATA frame received on #{stream.state} stream #{f.sid}")
-      when :closed, :halfclosed_remote
+      when :closed, :half_closed_remote
         raise StreamError.new(STREAM_CLOSED, f.sid, "DATA frame received on #{stream.state} stream #{f.sid}")
       else
         raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
@@ -737,10 +786,10 @@ blue "deliver #{m.inspect}"
       stream = @streams[f.sid]
       raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA frame received on idle stream #{f.sid}") unless stream
       case stream.state
-      when :open, :halfclosed_local
+      when :open, :half_closed_local
       when :idle, :reserved_local, :reserved_remote
         raise ConnectionError.new(PROTOCOL_ERROR, "GZIPPED_DATA frame received on #{stream.state} stream #{f.sid}")
-      when :closed, :halfclosed_remote
+      when :closed, :half_closed_remote
         raise StreamError.new(STREAM_CLOSED, f.sid, "GZIPPED_DATA frame received on #{stream.state} stream #{f.sid}")
       else
         raise "BUG: invalid stream #{f.sid} state #{stream.state.inspect}" # FIXME
@@ -794,8 +843,8 @@ blue "deliver #{m.inspect}"
           stream.open!
         when :reserved_remote
           stream.close_local!
-        when :open, :halfclosed_local
-        when :halfclosed_remote
+        when :open, :half_closed_local
+        when :half_closed_remote
           # Can't emit STREAM_ERROR here; we must parse the header block first
           throw :STREAM_ERROR, StreamError.new(STREAM_CLOSED, f.sid, "HEADERS frame received on half-closed stream #{f.sid}")
         when :closed

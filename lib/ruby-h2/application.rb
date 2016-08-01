@@ -52,6 +52,10 @@ class ApplicationClass
           q.status = 200
           q['content-type'] = 'text/html'
           q << callback.call(r, q)
+        elsif r.path == '/.well-known/h2interop/state'
+          q.status = 200
+          q['content-type'] = 'application/json'
+          q << c.interop_state(q)
         else
           q.status = 404
           q['content-type'] = 'text/html'

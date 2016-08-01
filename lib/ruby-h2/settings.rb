@@ -43,6 +43,28 @@ module RUBYH2
         hash
       end
 
+      def name setting
+        'SETTINGS_' + case setting
+        when HEADER_TABLE_SIZE
+          'HEADER_TABLE_SIZE'
+        when ENABLE_PUSH
+          'ENABLE_PUSH'
+        when MAX_CONCURRENT_STREAMS
+          'MAX_CONCURRENT_STREAMS'
+        when INITIAL_WINDOW_SIZE
+          'INITIAL_WINDOW_SIZE'
+        when MAX_FRAME_SIZE
+          'MAX_FRAME_SIZE'
+        when MAX_HEADER_LIST_SIZE
+          'MAX_HEADER_LIST_SIZE'
+        when ACCEPT_GZIPPED_DATA
+          'ACCEPT_GZIPPED_DATA'
+        else
+          # ???
+          setting.to_s
+        end
+      end
+
     end
   end
 end
