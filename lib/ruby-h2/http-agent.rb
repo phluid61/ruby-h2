@@ -937,7 +937,7 @@ yellow "--"
             raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRAME_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff # FIXME
             @max_frame_size = v
           when Settings::MAX_HEADER_LIST_SIZE
-            # FIXME ???
+            @max_header_list_size = v
 
           when Settings::ACCEPT_GZIPPED_DATA
             raise ConnectionError.new(PROTOCOL_ERROR, "ACCEPT_GZIPPED_DATA must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
