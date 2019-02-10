@@ -17,11 +17,11 @@ class Test_huffman_codes < Test::Unit::TestCase
 			[byte(253), [0x7ffffef,27]],
 			[byte(256), [0x3fffffff,30]], # special case (??)
 		]
-		equal_tests(list) {|i| ::RUBYH2_HuffmanCodes.encode_byte i }
+		equal_tests(list) {|i| ::RUBYH2::HuffmanCodes.encode_byte i }
 	end
 	def test_encode_byte__error
 		assert_raise ArgumentError do
-			::RUBYH2_HuffmanCodes.encode_byte 257
+			::RUBYH2::HuffmanCodes.encode_byte 257
 		end
 	end
 
@@ -30,11 +30,11 @@ class Test_huffman_codes < Test::Unit::TestCase
 			[bits('010101'),   [37,[]]],
 			[bits('01010101'), [37,[0,1]]],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HuffmanCodes.decode_byte i }
+		equal_tests(list) {|i| ::RUBYH2::HuffmanCodes.decode_byte i }
 	end
 	def test_decode_byte__error
 		assert_raise ArgumentError do
-			::RUBYH2_HuffmanCodes.decode_byte bits('11111111')
+			::RUBYH2::HuffmanCodes.decode_byte bits('11111111')
 		end
 	end
 
@@ -44,7 +44,7 @@ class Test_huffman_codes < Test::Unit::TestCase
 			['no-cache', "\xa8\xeb\x10\x64\x9c\xbf"],
 			['Thu, 24 Oct 2013 18:32:21 GMT', "\xdf\x3d\xbf\x4a\x09\xa5\x35\x11\x2a\x08\x01\x65\x40\xbd\x71\x91\x5c\x10\x54\xc5\xa3\x7f"],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HuffmanCodes.encode i }
+		equal_tests(list) {|i| ::RUBYH2::HuffmanCodes.encode i }
 	end
 
 	def test_decode
@@ -53,11 +53,11 @@ class Test_huffman_codes < Test::Unit::TestCase
 			["\xa8\xeb\x10\x64\x9c\xbf", 'no-cache'],
 			["\xdf\x3d\xbf\x4a\x09\xa5\x35\x11\x2a\x08\x01\x65\x40\xbd\x71\x91\x5c\x10\x54\xc5\xa3\x7f", 'Thu, 24 Oct 2013 18:32:21 GMT'],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HuffmanCodes.decode i }
+		equal_tests(list) {|i| ::RUBYH2::HuffmanCodes.decode i }
 	end
 	def test_decode__error
 		assert_raise ArgumentError do
-			::RUBYH2_HuffmanCodes.decode 'Not a Huffman Sequence'
+			::RUBYH2::HuffmanCodes.decode 'Not a Huffman Sequence'
 		end
 	end
 end

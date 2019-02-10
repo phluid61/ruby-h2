@@ -17,7 +17,7 @@ class Test_encoding < Test::Unit::TestCase
 			[0xFF, [0xFF,0x00]],
 			[0x100,[0xFF,0x01]],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HPackEncoding.encode_int(i).bytes }
+		equal_tests(list) {|i| ::RUBYH2::HPackEncoding.encode_int(i).bytes }
 	end
 
 	def test_encode_int2
@@ -31,7 +31,7 @@ class Test_encoding < Test::Unit::TestCase
 			[[0xFF, 7], [0x7F,0x80,0x01]],
 			[[0x100,7], [0x7F,0x81,0x01]],
 		]
-		equal_tests(list) {|i,b| ::RUBYH2_HPackEncoding.encode_int(i, prefix_bits: b).bytes }
+		equal_tests(list) {|i,b| ::RUBYH2::HPackEncoding.encode_int(i, prefix_bits: b).bytes }
 	end
 
 	def test_encode_int3
@@ -42,7 +42,7 @@ class Test_encoding < Test::Unit::TestCase
 			[[0x01, 7, "\x0"], [0x01]],
 			[[0x01, 7, 0x80],  [0x81]],
 		]
-		equal_tests(list) {|i,b,p| ::RUBYH2_HPackEncoding.encode_int(i, prefix_bits: b, prefix: p).bytes }
+		equal_tests(list) {|i,b,p| ::RUBYH2::HPackEncoding.encode_int(i, prefix_bits: b, prefix: p).bytes }
 	end
 
 	def test_encode_int__error
@@ -57,7 +57,7 @@ class Test_encoding < Test::Unit::TestCase
 			[1, 8, self], # prefix not Integer|String|NilClass
 			[1, 4, 0xFF], # prefix sets masked bits
 		].each do |i,b,p|
-			assert_raise(ArgumentError) { ::RUBYH2_HPackEncoding.encode_int(i, prefix_bits: b, prefix: p) }
+			assert_raise(ArgumentError) { ::RUBYH2::HPackEncoding.encode_int(i, prefix_bits: b, prefix: p) }
 		end
 	end
 
@@ -71,7 +71,7 @@ class Test_encoding < Test::Unit::TestCase
 			["\x00abc",     ["\x00", 0x00, 'abc']],
 			["\xFF\x01abc", ["\x00", 0x100,'abc']],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HPackEncoding.decode_int i }
+		equal_tests(list) {|i| ::RUBYH2::HPackEncoding.decode_int i }
 	end
 
 	def test_decode_int2
@@ -89,8 +89,8 @@ class Test_encoding < Test::Unit::TestCase
 			[["\x00abc",      8], ["\x00", 0x00, 'abc']],
 			[["\x01abc",      7], ["\x00", 0x01, 'abc']],
 		]
-		#assert_equal( x.inspect, ::RUBYH2_HPackEncoding.decode_int(b, prefix_bits: p).inspect )
-		equal_tests(list) {|i,p| ::RUBYH2_HPackEncoding.decode_int i, prefix_bits: p }
+		#assert_equal( x.inspect, ::RUBYH2::HPackEncoding.decode_int(b, prefix_bits: p).inspect )
+		equal_tests(list) {|i,p| ::RUBYH2::HPackEncoding.decode_int i, prefix_bits: p }
 	end
 
 	def test_decode_int__error
@@ -99,7 +99,7 @@ class Test_encoding < Test::Unit::TestCase
 			["\x00", -1], # prefix bits < 0
 			["\x00", 9], # prefix bits > 8
 		].each do |b, p|
-			assert_raise(ArgumentError) { ::RUBYH2_HPackEncoding.decode_int(b, prefix_bits: p) }
+			assert_raise(ArgumentError) { ::RUBYH2::HPackEncoding.decode_int(b, prefix_bits: p) }
 		end
 	end
 
@@ -112,7 +112,7 @@ class Test_encoding < Test::Unit::TestCase
 			['www.example.com', "\xF1\xE3\xC2\xE5\xF2\x3A\x6B\xA0\xAB\x90\xF4\xFF"],
 			['/.well-known/host-meta', "\x61\x7F\x05\xA2\x85\xBA\xD4\x7F\x15\x31\x39\xD0\x95\xA9\x2A\x47"],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HPackEncoding.huffman_code_for i }
+		equal_tests(list) {|i| ::RUBYH2::HPackEncoding.huffman_code_for i }
 	end
 
 	def test_string_from
@@ -124,7 +124,7 @@ class Test_encoding < Test::Unit::TestCase
 			["\xF1\xE3\xC2\xE5\xF2\x3A\x6B\xA0\xAB\x90\xF4\xFF", 'www.example.com'],
 			["\x61\x7F\x05\xA2\x85\xBA\xD4\x7F\x15\x31\x39\xD0\x95\xA9\x2A\x47", '/.well-known/host-meta'],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HPackEncoding.string_from i }
+		equal_tests(list) {|i| ::RUBYH2::HPackEncoding.string_from i }
 	end
 
 	def test_string_from__error
@@ -132,7 +132,7 @@ class Test_encoding < Test::Unit::TestCase
 			"\xEA", # \xE9 would be 'j', but wrong padding
 			"\x3F\xFF\xFF\xFF", # Valid encoding oF EOS
 		].each do |i|
-			assert_raise(ArgumentError, "#{i.inspect} should be invalid") { ::RUBYH2_HPackEncoding.string_from i }
+			assert_raise(ArgumentError, "#{i.inspect} should be invalid") { ::RUBYH2::HPackEncoding.string_from i }
 		end
 	end
 
@@ -143,7 +143,7 @@ class Test_encoding < Test::Unit::TestCase
 			['Hello', "\x84\xC6\x5A\x28\x3F"],
 			[foo, "\x7F\x83\x01#{foo}"],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HPackEncoding.encode_string i }
+		equal_tests(list) {|i| ::RUBYH2::HPackEncoding.encode_string i }
 	end
 
 	def test_decode_string
@@ -156,7 +156,7 @@ class Test_encoding < Test::Unit::TestCase
 			["\x00bar", ['','bar']],
 			["\x7F\x83\x01#{foo}bar", [foo,'bar']],
 		]
-		equal_tests(list) {|i| ::RUBYH2_HPackEncoding.decode_string i }
+		equal_tests(list) {|i| ::RUBYH2::HPackEncoding.decode_string i }
 	end
 
 	def test_decode_string__error
@@ -164,7 +164,7 @@ class Test_encoding < Test::Unit::TestCase
 			'', # no bytes
 			"\x01", # not enough bytes
 		].each do |i|
-			assert_raises(ArgumentError) { ::RUBYH2_HPackEncoding.decode_string i }
+			assert_raises(ArgumentError) { ::RUBYH2::HPackEncoding.decode_string i }
 		end
 	end
 
