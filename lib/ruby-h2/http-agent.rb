@@ -31,6 +31,9 @@ def frm(f)
   "<#{t}: flags=#{flg f.flags} stream=#{f.sid} payload=#{hex f.payload}>"
 end
 
+undef :ansi
+def ansi(*a) end
+
 require 'thread'
 require 'zlib'
 require 'stringio'
