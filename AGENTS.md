@@ -62,6 +62,13 @@ ruby test/test_huffman_codes.rb
 There is no single command to run all tests. Run each test file individually.
 Test helper utilities are in `test/helpers.rb`.
 
+## GitHub Actions
+
+- `.github/workflows/update-pages.yml` triggers on pushes to `development`
+  when `README.md`, `LICENSE`, or `code_of_conduct.md` change. It syncs
+  those files to the `gh-pages` branch and rebuilds the site using a
+  Rakefile and Gemfile that live on that branch (not on `development`).
+
 ## Experimental features
 
 Some frame types and settings are non-standard experiments:
