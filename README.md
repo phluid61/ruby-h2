@@ -22,9 +22,11 @@ By default the demo site serves the following resources:
 The server sends a valid 404 response for any other resource, and a 405
 for any request method other than GET or HEAD.
 
-| Repository | <https://github.com/phluid61/ruby-h2/> |
+|            |                                              |
+|------------|----------------------------------------------|
+| Repository | <https://github.com/phluid61/ruby-h2/>       |
 | Issues     | <https://github.com/phluid61/ruby-h2/issues> |
-| Webpage    | <https://phluid61.github.io/ruby-h2/> |
+| Webpage    | <https://phluid61.github.io/ruby-h2/>        |
 
 ## Contributor Code of Conduct
 
