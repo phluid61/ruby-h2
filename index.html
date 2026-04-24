@@ -1,49 +1,47 @@
 ---
 layout: default
 title: "ruby-h2"
-extra_head: |
-  <link rel="stylesheet" href="highlight.js/styles/default.css">
-  <link rel="stylesheet" href="page.css">
-  <script src="highlight.js/highlight.pack.js"></script>
-  <script>hljs.initHighlightingOnLoad();</script>
 ---
 <h1><a href="#ruby-h2" aria-hidden="true" class="anchor" id="ruby-h2"></a>ruby-h2</h1>
 <p>A pure ruby HTTP/2 library.</p>
-<p>There's a demo server in <code>demo-site.rb</code> which runs a basic HTTP/2<br />
-server.  Full HTTPS compatibility requires that Ruby was built with<br />
-OpenSSL version 1.0.2+ (for ALPN and SNI).  You should also have a<br />
+<p>There's a demo server in <code>demo-site.rb</code> which runs a basic HTTP/2
+server.  Full HTTPS compatibility requires that Ruby was built with
+OpenSSL version 1.0.2+ (for ALPN and SNI).  You should also have a
 valid X.509 certificate and key in the same directory.</p>
-<pre><code>openssl req -x509 -newkey rsa:2048 -nodes \
-  -keyout private.key \
-  -out certificate.crt \
-  -days 3650
-</code></pre>
+<pre style="background-color:#2b303b;"><code><span style="color:#c0c5ce;">openssl req -x509 -newkey rsa:2048 -nodes \
+</span><span style="color:#c0c5ce;">  -keyout private.key \
+</span><span style="color:#c0c5ce;">  -out certificate.crt \
+</span><span style="color:#c0c5ce;">  -days 3650
+</span></code></pre>
 <p>By default the demo site serves the following resources:</p>
 <ul>
 <li>
 <p><code>https://localhost:8888/</code> - a simple HTML page</p>
 </li>
 <li>
-<p><code>https://localhost:8888/padded</code> - as above, but uses HTTP/2 padding<br />
+<p><code>https://localhost:8888/padded</code> - as above, but uses HTTP/2 padding
 on HEADERS and DATA frames in the response</p>
 </li>
 </ul>
-<p>The server sends a valid 404 response for any other resource, and a 405<br />
+<p>The server sends a valid 404 response for any other resource, and a 405
 for any request method other than GET or HEAD.</p>
+<p>| Repository | <a href="https://github.com/phluid61/ruby-h2/">https://github.com/phluid61/ruby-h2/</a> |
+| Issues     | <a href="https://github.com/phluid61/ruby-h2/issues">https://github.com/phluid61/ruby-h2/issues</a> |
+| Webpage    | <a href="https://phluid61.github.io/ruby-h2/">https://phluid61.github.io/ruby-h2/</a> |</p>
 <h2><a href="#contributor-code-of-conduct" aria-hidden="true" class="anchor" id="contributor-code-of-conduct"></a>Contributor Code of Conduct</h2>
-<p>This repository is subject to a <a href="code_of_conduct.md">Contributor Code of Conduct</a><br />
-adapted from the <a href="https://www.contributor-covenant.org">Contributor Covenant</a>, version 3.0, available at<br />
+<p>This repository is subject to a <a href="code_of_conduct.html">Contributor Code of Conduct</a>
+adapted from the <a href="https://www.contributor-covenant.org">Contributor Covenant</a>, version 3.0, available at
 <a href="https://www.contributor-covenant.org/version/3/0/">https://www.contributor-covenant.org/version/3/0/</a></p>
 <h2><a href="#licence" aria-hidden="true" class="anchor" id="licence"></a>Licence</h2>
-<p>This project is licensed under the ISC licence. See <a href="LICENSE">LICENSE</a><br />
+<p>This project is licensed under the ISC licence. See <a href="LICENSE">LICENSE</a>
 for details.</p>
-<pre id="license" class="no-highlight">Copyright (c) 2015, Matthew Kerwin <matthew@kerwin.net.au>
+<pre id="license" class="no-highlight">Copyright (c) 2015, Matthew Kerwin &lt;matthew@kerwin.net.au&gt;
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
 copyright notice and this permission notice appear in all copies.
 
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+THE SOFTWARE IS PROVIDED &quot;AS IS&quot; AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
 MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
 ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
@@ -51,115 +49,4 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-</pre><h1><a href="#contributor-covenant-30-code-of-conduct" aria-hidden="true" class="anchor" id="contributor-covenant-30-code-of-conduct"></a>Contributor Covenant 3.0 Code of Conduct</h1>
-<h2><a href="#our-pledge" aria-hidden="true" class="anchor" id="our-pledge"></a>Our Pledge</h2>
-<p>We pledge to make our community welcoming, safe, and equitable for all.</p>
-<p>We are committed to fostering an environment that respects and promotes the dignity, rights, and<br />
-contributions of all individuals, regardless of characteristics including race, ethnicity, caste,<br />
-color, age, physical characteristics, neurodiversity, disability, sex or gender, gender identity or<br />
-expression, sexual orientation, language, philosophy or religion, national or social origin,<br />
-socio-economic position, level of education, or other status. The same privileges of participation<br />
-are extended to everyone who participates in good faith and in accordance with this Covenant.</p>
-<h2><a href="#encouraged-behaviors" aria-hidden="true" class="anchor" id="encouraged-behaviors"></a>Encouraged Behaviors</h2>
-<p>While acknowledging differences in social norms, we all strive to meet our community's expectations<br />
-for positive behavior. We also understand that our words and actions may be interpreted differently<br />
-than we intend based on culture, background, or native language.</p>
-<p>With these considerations in mind, we agree to behave mindfully toward each other and act in ways<br />
-that center our shared values, including:</p>
-<ol>
-<li>Respecting the <strong>purpose of our community</strong>, our activities, and our ways of gathering.</li>
-<li>Engaging <strong>kindly and honestly</strong> with others.</li>
-<li>Respecting <strong>different viewpoints</strong> and experiences.</li>
-<li><strong>Taking responsibility</strong> for our actions and contributions.</li>
-<li>Gracefully giving and accepting <strong>constructive feedback</strong>.</li>
-<li>Committing to <strong>repairing harm</strong> when it occurs.</li>
-<li>Behaving in other ways that promote and sustain the <strong>well-being of our community</strong>.</li>
-</ol>
-<h2><a href="#restricted-behaviors" aria-hidden="true" class="anchor" id="restricted-behaviors"></a>Restricted Behaviors</h2>
-<p>We agree to restrict the following behaviors in our community. Instances, threats, and promotion of<br />
-these behaviors are violations of this Code of Conduct.</p>
-<ol>
-<li><strong>Harassment.</strong> Violating explicitly expressed boundaries or engaging in unnecessary personal attention after any clear request to stop.</li>
-<li><strong>Character attacks.</strong> Making insulting, demeaning, or pejorative comments directed at a community member or group of people.</li>
-<li><strong>Stereotyping or discrimination.</strong> Characterizing anyone’s personality or behavior on the basis of immutable identities or traits.</li>
-<li><strong>Sexualization.</strong> Behaving in a way that would generally be considered inappropriately intimate in the context or purpose of the community.</li>
-<li><strong>Violating confidentiality</strong>. Sharing or acting on someone's personal or private information without their permission.</li>
-<li><strong>Endangerment.</strong> Causing, encouraging, or threatening violence or other harm toward any person or group.</li>
-<li>Behaving in other ways that <strong>threaten the well-being</strong> of our community.</li>
-</ol>
-<h3><a href="#other-restrictions" aria-hidden="true" class="anchor" id="other-restrictions"></a>Other Restrictions</h3>
-<ol>
-<li><strong>Misleading identity.</strong> Impersonating someone else for any reason, or pretending to be someone else to evade enforcement actions.</li>
-<li><strong>Failing to credit sources.</strong> Not properly crediting the sources of content you contribute.</li>
-<li><strong>Promotional materials</strong>. Sharing marketing or other commercial content in a way that is outside the norms of the community.</li>
-<li><strong>Irresponsible communication.</strong> Failing to responsibly present content which includes, links or describes any other restricted behaviors.</li>
-</ol>
-<h2><a href="#reporting-an-issue" aria-hidden="true" class="anchor" id="reporting-an-issue"></a>Reporting an Issue</h2>
-<p>Tensions can occur between community members even when they are trying their best to collaborate.<br />
-Not every conflict represents a code of conduct violation, and this Code of Conduct reinforces<br />
-encouraged behaviors and norms that can help avoid conflicts and minimize harm.</p>
-<p>When an incident does occur, it is important to report it promptly. To report a possible violation<br />
-send an email to <a href="mailto:matthew@kerwin.net.au">matthew@kerwin.net.au</a></p>
-<p>Community Moderators take reports of violations seriously and will make every effort to respond in a<br />
-timely manner. They will investigate all reports of code of conduct violations, reviewing messages,<br />
-logs, and recordings, or interviewing witnesses and other participants. Community Moderators will<br />
-keep investigation and enforcement actions as transparent as possible while prioritizing safety and<br />
-confidentiality. In order to honor these values, enforcement actions are carried out in private with<br />
-the involved parties, but communicating to the whole community may be part of a mutually agreed upon<br />
-resolution.</p>
-<h2><a href="#addressing-and-repairing-harm" aria-hidden="true" class="anchor" id="addressing-and-repairing-harm"></a>Addressing and Repairing Harm</h2>
-<p>If an investigation by the Community Moderators finds that this Code of Conduct has been violated,<br />
-the following enforcement ladder may be used to determine how best to repair harm, based on the<br />
-incident's impact on the individuals involved and the community as a whole. Depending on the<br />
-severity of a violation, lower rungs on the ladder may be skipped.</p>
-<ol>
-<li>Warning
-<ol>
-<li>Event: A violation involving a single incident or series of incidents.</li>
-<li>Consequence: A private, written warning from the Community Moderators.</li>
-<li>Repair: Examples of repair include a private written apology, acknowledgement of responsibility, and seeking clarification on expectations.</li>
-</ol>
-</li>
-<li>Temporarily Limited Activities
-<ol>
-<li>Event: A repeated incidence of a violation that previously resulted in a warning, or the first incidence of a more serious violation.</li>
-<li>Consequence: A private, written warning with a time-limited cooldown period designed to underscore the seriousness of the situation and give the community members involved time to process the incident. The cooldown period may be limited to particular communication channels or interactions with particular community members.</li>
-<li>Repair: Examples of repair may include making an apology, using the cooldown period to reflect on actions and impact, and being thoughtful about re-entering community spaces after the period is over.</li>
-</ol>
-</li>
-<li>Temporary Suspension
-<ol>
-<li>Event: A pattern of repeated violation which the Community Moderators have tried to address with warnings, or a single serious violation.</li>
-<li>Consequence: A private written warning with conditions for return from suspension. In general, temporary suspensions give the person being suspended time to reflect upon their behavior and possible corrective actions.</li>
-<li>Repair: Examples of repair include respecting the spirit of the suspension, meeting the specified conditions for return, and being thoughtful about how to reintegrate with the community when the suspension is lifted.</li>
-</ol>
-</li>
-<li>Permanent Ban
-<ol>
-<li>Event: A pattern of repeated code of conduct violations that other steps on the ladder have failed to resolve, or a violation so serious that the Community Moderators determine there is no way to keep the community safe with this person as a member.</li>
-<li>Consequence: Access to all community spaces, tools, and communication channels is removed. In general, permanent bans should be rarely used, should have strong reasoning behind them, and should only be resorted to if working through other remedies has failed to change the behavior.</li>
-<li>Repair: There is no possible repair in cases of this severity.</li>
-</ol>
-</li>
-</ol>
-<p>This enforcement ladder is intended as a guideline. It does not limit the ability of Community<br />
-Managers to use their discretion and judgment, in keeping with the best interests of our community.</p>
-<h2><a href="#scope" aria-hidden="true" class="anchor" id="scope"></a>Scope</h2>
-<p>This Code of Conduct applies within all community spaces, and also applies when an individual is<br />
-officially representing the community in public or other spaces. Examples of representing our<br />
-community include using an official email address, posting via an official social media account, or<br />
-acting as an appointed representative at an online or offline event.</p>
-<h2><a href="#attribution" aria-hidden="true" class="anchor" id="attribution"></a>Attribution</h2>
-<p>This Code of Conduct is adapted from the Contributor Covenant, version 3.0, permanently available at<br />
-<a href="https://www.contributor-covenant.org/version/3/0/">https://www.contributor-covenant.org/version/3/0/</a>.</p>
-<p>Contributor Covenant is stewarded by the Organization for Ethical Source and licensed under CC BY-SA<br />
-4.0. To view a copy of this license, visit<br />
-<a href="https://creativecommons.org/licenses/by-sa/4.0/">https://creativecommons.org/licenses/by-sa/4.0/</a></p>
-<p>For answers to common questions about Contributor Covenant, see the FAQ at<br />
-<a href="https://www.contributor-covenant.org/faq">https://www.contributor-covenant.org/faq</a>.<br />
-Translations are provided at<br />
-<a href="https://www.contributor-covenant.org/translations">https://www.contributor-covenant.org/translations</a>.<br />
-Additional enforcement and community guideline resources can be found at<br />
-<a href="https://www.contributor-covenant.org/resources">https://www.contributor-covenant.org/resources</a>.<br />
-The enforcement ladder was inspired by the work of<br />
-<a href="https://github.com/mozilla/inclusion">Mozilla’s code of conduct team</a>.</p>
+</pre>
