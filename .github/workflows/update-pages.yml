@@ -3,7 +3,7 @@ name: Update GitHub Pages (development)
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [main]
     paths: [README.md, LICENSE, code_of_conduct.md]
 
 permissions:
