@@ -62,6 +62,24 @@ ruby test/test_huffman_codes.rb
 There is no single command to run all tests. Run each test file individually.
 Test helper utilities are in `test/helpers.rb`.
 
+## Branching model
+
+This project follows git-flow. The integration branch is called
+`development` (not `develop`).
+
+- **`main`** — production-ready releases.
+- **`development`** — integration branch for the next release. This is the
+  default branch.
+- **`feature/*`** — branched from `development`, merged back into
+  `development`.
+- **`release/*`** — branched from `development`, merged into both `main`
+  and `development`.
+- **`hotfix/*`** — branched from `main`, merged into both `main` and
+  `development`.
+
+When creating branches or targeting merges, use `development` as the base
+branch unless working on a hotfix.
+
 ## GitHub Actions
 
 - `.github/workflows/update-pages.yml` triggers on pushes to `development`
