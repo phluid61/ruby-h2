@@ -82,10 +82,11 @@ branch unless working on a hotfix.
 
 ## GitHub Actions
 
-- `.github/workflows/update-pages.yml` triggers on pushes to `development`
+- `.github/workflows/update-pages.yml` triggers on pushes to `main`
   when `README.md`, `LICENSE`, or `code_of_conduct.md` change. It syncs
-  those files to the `gh-pages` branch and rebuilds the site using a
-  Rakefile and Gemfile that live on that branch (not on `development`).
+  those files from `development` to the `gh-pages` branch and rebuilds
+  `index.html` and `code_of_conduct.html` using an inline Ruby script
+  (commonmarker). The `gh-pages` branch has its own Gemfile for this.
 
 ## Experimental features
 
