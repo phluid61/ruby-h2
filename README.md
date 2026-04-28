@@ -1,5 +1,8 @@
 # ruby-h2
 
+[![Test](https://github.com/phluid61/ruby-h2/actions/workflows/test.yml/badge.svg)](https://github.com/phluid61/ruby-h2/actions/workflows/test.yml)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v3.0%20adopted-ff69b4.svg)](code_of_conduct.md)
+
 A pure ruby HTTP/2 library.
 
 There's a demo server in `demo-site.rb` which runs a basic HTTP/2

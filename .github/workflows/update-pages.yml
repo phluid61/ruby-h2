@@ -1,4 +1,4 @@
-name: Update GitHub Pages (development)
+name: Update GitHub Pages
 
 on:
   workflow_dispatch:
@@ -25,8 +25,8 @@ jobs:
       - name: Sync files from development
         id: sync
         run: |
-          git fetch origin development
-          git checkout origin/development -- README.md LICENSE code_of_conduct.md
+          git fetch origin main
+          git checkout origin/main -- README.md LICENSE code_of_conduct.md
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No changes detected"

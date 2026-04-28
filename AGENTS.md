@@ -84,7 +84,7 @@ branch unless working on a hotfix.
 
 - `.github/workflows/update-pages.yml` triggers on pushes to `main`
   when `README.md`, `LICENSE`, or `code_of_conduct.md` change. It syncs
-  those files from `development` to the `gh-pages` branch and rebuilds
+  those files from `main` to the `gh-pages` branch and rebuilds
   `index.html` and `code_of_conduct.html` using an inline Ruby script
   (commonmarker). The `gh-pages` branch has its own Gemfile for this.
 
