@@ -777,7 +777,7 @@ blue "deliver #{m.inspect}"
         veto_gzip! if inflated_bytes.nil?
       end
 
-      # note: only update the frame window if gunzip succeeddededd
+      # note: only update the frame window if gunzip succeeded
       if size > 0
         h = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, f.sid, [size].pack('N')
         send_frame h
