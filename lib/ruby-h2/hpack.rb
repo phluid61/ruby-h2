@@ -94,7 +94,7 @@ module RUBYH2
         RUBYH2::TableEntry.new(':status', '500'),
         RUBYH2::TableEntry.new('accept-charset', ''),
         RUBYH2::TableEntry.new('accept-encoding', ''),
-        RUBYH2::TableEntry.new('accept-languages', ''),
+        RUBYH2::TableEntry.new('accept-language', ''),
         RUBYH2::TableEntry.new('accept-ranges', ''),
         RUBYH2::TableEntry.new('accept', ''),
         RUBYH2::TableEntry.new('access-control-allow-origin', ''),
@@ -136,7 +136,7 @@ module RUBYH2
         RUBYH2::TableEntry.new('strict-transport-security', ''),
         RUBYH2::TableEntry.new('transfer-encoding', ''),
         RUBYH2::TableEntry.new('user-agent', ''),
-        RUBYH2::TableEntry.new('var', ''),
+        RUBYH2::TableEntry.new('vary', ''),
         RUBYH2::TableEntry.new('via', ''),
         RUBYH2::TableEntry.new('www-authenticate', ''),
       ]
@@ -255,4 +255,3 @@ module RUBYH2
   end
 
 end
-
