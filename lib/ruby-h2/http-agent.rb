@@ -1019,7 +1019,7 @@ yellow "--"
             until queue.empty?
               f = queue.first
               b = (f.type == FrameTypes::DATA ? f.payload_size : 0)
-              throw :CONNECTION_EXHAUSED if @window_size < b
+              throw :CONNECTION_EXHAUSTED if @window_size < b
               throw :STREAM_EXHAUSTED if s.window_size < b
               queue.shift
               @window_size -= b
@@ -1034,4 +1034,3 @@ yellow "--"
   end
 
 end
-
