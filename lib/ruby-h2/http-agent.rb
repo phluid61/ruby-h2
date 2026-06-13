@@ -757,7 +757,6 @@ blue "deliver #{m.inspect}"
       return if @goaway
 
       bytes = f.payload
-      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       # never run out of window space
       size = bytes.bytesize
@@ -765,6 +764,8 @@ blue "deliver #{m.inspect}"
         g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0, [size].pack('N')
         send_frame g
       end
+
+      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       inflated_bytes = nil
       gunzip = Zlib::GzipReader.new(StringIO.new bytes)
