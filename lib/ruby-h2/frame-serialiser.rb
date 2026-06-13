@@ -27,7 +27,7 @@ module RUBYH2
       len0 = (len >> 16) & 0xFF
       len1 = (len & 0xFFFF)
 
-      raise "too long (#{len} > #{@max_frame_size}" if len > @max_frame_size
+      raise "too long (#{len} > #{@max_frame_size})" if len > @max_frame_size
       raise "reserved bit set" if frame.sid & R_MASK != 0
 
       bytes = [len0,len1, frame.type, frame.flags, frame.sid, frame.payload].pack HEADER_FORMAT
