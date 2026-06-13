@@ -63,7 +63,7 @@ HTML
         # force certain behaviours
         q['content-length'] = q.body.bytesize
         if r.method.upcase == 'HEAD'
-          q.instance_variable_set :@body, ''
+          q.instance_variable_set :@body, ''.b
         end
       else
         q.status = 405
