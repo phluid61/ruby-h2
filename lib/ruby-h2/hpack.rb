@@ -238,7 +238,6 @@ module RUBYH2
         if i
           # generate indexed thing
           bytes << RUBYH2::HPackEncoding.encode_int( i, prefix_bits: 7, prefix: 0x80 )
-          # TODO: @table_out.add name, value ???
         elsif index
           i = @table_out.find_name name
           if i

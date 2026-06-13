@@ -943,21 +943,21 @@ yellow "--"
           when Settings::HEADER_TABLE_SIZE
             @hpack.max_size_out = v
           when Settings::ENABLE_PUSH
-            raise ConnectionError.new(PROTOCOL_ERROR, "ENABLE_PUSH must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
+            raise ConnectionError.new(PROTOCOL_ERROR, "ENABLE_PUSH must be 0 or 1, received #{v}") unless v == 0 or v == 1
             @push_to_peer = (v == 1)
           when Settings::MAX_CONCURRENT_STREAMS
             @max_streams = v
           when Settings::INITIAL_WINDOW_SIZE
-            raise ConnectionError.new(FLOW_CONTROL_ERROR, "INITIAL_WINDOW_SIZE too large #{v}") if v > 0x7fffffff # FIXME
+            raise ConnectionError.new(FLOW_CONTROL_ERROR, "INITIAL_WINDOW_SIZE too large #{v}") if v > 0x7fffffff
             @default_window_size = v
           when Settings::MAX_FRAME_SIZE
-            raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRAME_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff # FIXME
+            raise ConnectionError.new(PROTOCOL_ERROR, "MAX_FRAME_SIZE out of bounds #{v}") if v < 0x4000 or v > 0xffffff
             @max_frame_size = v
           when Settings::MAX_HEADER_LIST_SIZE
             @max_header_list_size = v
 
           when Settings::ACCEPT_GZIPPED_DATA
-            raise ConnectionError.new(PROTOCOL_ERROR, "ACCEPT_GZIPPED_DATA must be 0 or 1, received #{v}") unless v == 0 or v == 1 # FIXME
+            raise ConnectionError.new(PROTOCOL_ERROR, "ACCEPT_GZIPPED_DATA must be 0 or 1, received #{v}") unless v == 0 or v == 1
             @ext__peer_gzip = (v == 1)
           end
         end
@@ -973,7 +973,6 @@ yellow "--"
     end
 
     def handle_ping f
-      # FIXME: if f.sid > 0 ...
       raise ConnectionError.new(PROTOCOL_ERROR, "received PING on stream id #{f.sid}") unless f.sid == 0
       raise ConnectionError.new(FRAME_SIZE_ERROR, "PING payload must be 8 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 8
       if f.flag? FLAG_ACK
@@ -982,7 +981,6 @@ yellow "--"
           @logger.info "ping pong #{f.payload.inspect}"
           @pings.delete_at idx
         else
-          # FIXME
           raise ConnectionError.new(PROTOCOL_ERROR, "unexpected PONG or incorrect payload #{f.payload.inspect}")
         end
       else
