@@ -456,7 +456,7 @@ blue "deliver #{m.inspect}"
       len = hash[:bytes].bytesize
       rem = (modulus - (len % modulus)) - 1
       # don't overflow the frame!
-      if len + rem > @max_frame_size
+      if len + rem + 1 > @max_frame_size
         rem = @max_frame_size - len - 1
       end
       if rem >= 0
