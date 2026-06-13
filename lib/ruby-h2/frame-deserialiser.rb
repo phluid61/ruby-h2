@@ -1,4 +1,5 @@
 # encoding: BINARY
+# frozen_string_literal: true
 # vim: ts=2 sts=2 sw=2 expandtab
 
 require_relative 'frame'
@@ -37,6 +38,7 @@ module RUBYH2
         len0,len1, type, flags, sid = bytes.unpack HEADER_FORMAT
         rest = bytes[HEADER_LENGTH..-1]
         len = (len0 << 16) | len1
+        sid &= ~R_MASK
 
         raise ConnectionError.new(Error::FRAME_SIZE_ERROR, "frame size too long (#{len} > #{@max_frame_size})") if len > @max_frame_size
         #raise "reserved bit set" if sid & R_MASK != 0

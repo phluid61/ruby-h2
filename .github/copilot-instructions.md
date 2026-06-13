@@ -12,8 +12,7 @@
 
 ## Style
 
-- 2-space indentation (spaces, not tabs) in library code. Test files use
-  tabs — match the existing style of whichever file you are editing.
+- 2-space indentation (spaces, not tabs).
 - Prefer Ruby symbol-style hash keys (`:key => value`) over the newer
   `key: value` syntax, matching the existing codebase.
 - Keep methods concise; the codebase favours short methods with minimal

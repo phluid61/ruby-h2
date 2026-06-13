@@ -1,4 +1,5 @@
 # encoding: BINARY
+# frozen_string_literal: true
 # vim: ts=2 sts=2 sw=2 expandtab
 
 require_relative 'http-server-agent'
@@ -63,7 +64,7 @@ HTML
         # force certain behaviours
         q['content-length'] = q.body.bytesize
         if r.method.upcase == 'HEAD'
-          q.instance_variable_set :@body, ''
+          q.instance_variable_set :@body, ''.b
         end
       else
         q.status = 405

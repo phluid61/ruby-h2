@@ -1,4 +1,5 @@
 # encoding: BINARY
+# frozen_string_literal: true
 # vim: ts=2 sts=2 sw=2 expandtab
 
 def hex(s) s.nil? ? 'nil' : "[#{s.bytesize}]:#{s.bytes.map{|b|'%02X' % b}.join '.'}" end
@@ -23,7 +24,7 @@ def flg(f)
     end
     n <<= 1
   end
-  "#{f.to_s 16}[#{a.join '|'}]"
+  "#{s}[#{a.join '|'}]"
 end
 def frm(f)
   t = RUBYH2::FrameTypes.constants.find {|t| f.type == RUBYH2::FrameTypes.const_get(t) }
@@ -262,7 +263,7 @@ red "read #{hex bytes}"
       s = if @streams.empty?
         1
       else
-        t = @streams.keys.last
+        t = @streams.keys.max
         t + 1 + (t % 2)
       end
 
@@ -274,7 +275,7 @@ red "read #{hex bytes}"
       s = if @streams.empty?
         2
       else
-        t = @streams.keys.last
+        t = @streams.keys.max
         t + 2 - (t % 2)
       end
 
@@ -311,12 +312,14 @@ blue "deliver #{m.inspect}"
       raise unless stream
       raise unless stream.local == :open
 
+      # HEADERS/CONTINUATION are not flow-controlled
+      max_header_size = @max_frame_size
       max_send_size = [@max_frame_size, @window_size, stream.window_size].min
 
       # create headers
       hblock = @hpack.create_block m.headers
       # split header block into chunks and deliver
-      chunks = hblock.scan(/.{1,#{max_send_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
+      chunks = hblock.scan(/.{1,#{max_header_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
       if chunks.empty?
         # I cast no judgement here, but shouldn't there be some headers..?
         chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
@@ -456,7 +459,7 @@ blue "deliver #{m.inspect}"
       len = hash[:bytes].bytesize
       rem = (modulus - (len % modulus)) - 1
       # don't overflow the frame!
-      if len + rem > @max_frame_size
+      if len + rem + 1 > @max_frame_size
         rem = @max_frame_size - len - 1
       end
       if rem >= 0
@@ -540,7 +543,7 @@ blue "deliver #{m.inspect}"
         # first frame has to be settings
         # FIXME: make sure this is the actual settings, not the ACK to ours
 
-        # RFC 7540, Section 3.5
+        # RFC 9113, Section 3.4
         # "Clients and servers MUST treat an invalid connection preface
         #  as a connection error (Section 5.4.1) of type
         #  PROTOCOL_ERROR."
@@ -550,13 +553,12 @@ blue "deliver #{m.inspect}"
 
       if @goaway
         case f.type
-        when FrameTypes::DATA
-        when FrameTypes::HEADERS
-        when FrameTypes::PUSH_PROMISE
-        when FrameTypes::CONTINUATION
-        when FrameTypes::GZIPPED_DATA
-        when FrameTypes::DROPPED_FRAME
-        else
+        when FrameTypes::DATA,
+             FrameTypes::HEADERS,
+             FrameTypes::PUSH_PROMISE,
+             FrameTypes::CONTINUATION,
+             FrameTypes::GZIPPED_DATA,
+             FrameTypes::DROPPED_FRAME
           # FIXME
           @logger.warn "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
           return
@@ -654,17 +656,19 @@ blue "deliver #{m.inspect}"
       # missing mandatory pseudo-headers
       malformed_headers ||= "missing mandatory pseudo-headers #{mandatory_headers.inspect}" unless mandatory_headers.empty?
 
-      # RFC 7540, Section 8.1.2
-      # "A request or response containing uppercase header field
-      #  names MUST be treated as malformed ..."
-      # > S8.1.2.6 "Malformed requests ... MUST be treated as a
-      #    stream error ..."
+      # RFC 9113, Section 8.1.1
+      # "A malformed request or response is one that is an otherwise
+      #  valid sequence of HTTP/2 frames but is invalid due to ...
+      #  the inclusion of uppercase field names ..."
+      # "Malformed requests or responses that are detected MUST be
+      #  treated as a stream error (Section 5.4.2) of type
+      #  PROTOCOL_ERROR."
       raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: #{malformed_headers}") if malformed_headers
 
-      # RFC 7540, Section 8.1.2.6
+      # RFC 9113, Section 8.1.1
       # "A request or response is also malformed if the value of a
       #  content-length header field does not equal the sum of the DATA
-      #  frame payload lengths that form the body."
+      #  frame payload lengths that form the content."
       cl = headers['content-length']
       raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: content-length #{cl.inspect}, expected #{stream.body.bytesize}") if cl and (Integer(cl) rescue -1) != stream.body.bytesize
 
@@ -680,7 +684,7 @@ blue "deliver #{m.inspect}"
       ints = bytes.bytes
       pad_length = ints.shift
       rst_length = ints.length
-      # e.g. RFC 7540, Section 6.1
+      # e.g. RFC 9113, Section 6.1
       # "If the length of the padding is the length of the frame
       #  payload or greater, the recipient MUST treat this as a
       #  connection error (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -696,7 +700,7 @@ blue "deliver #{m.inspect}"
     end
 
     def handle_data f
-      # RFC 7540, Section 6.1
+      # RFC 9113, Section 6.1
       # "If a DATA frame is received whose stream identifier field is
       #  0x0, the recipient MUST respond with a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -757,7 +761,6 @@ blue "deliver #{m.inspect}"
       return if @goaway
 
       bytes = f.payload
-      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       # never run out of window space
       size = bytes.bytesize
@@ -765,6 +768,8 @@ blue "deliver #{m.inspect}"
         g = Frame.new FrameTypes::WINDOW_UPDATE, 0x00, 0, [size].pack('N')
         send_frame g
       end
+
+      bytes = strip_padding(bytes) if f.flag? FLAG_PADDED
 
       inflated_bytes = nil
       gunzip = Zlib::GzipReader.new(StringIO.new bytes)
@@ -851,19 +856,19 @@ yellow "--"
     end
 
     def handle_priority f
-      # RFC 7540, Section 6.3
+      # RFC 9113, Section 6.3
       # "If a PRIORITY frame is received with a stream identifier of
       #  0x0, the recipient MUST respond with a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "PRIORITY must be sent on stream >0") if f.sid == 0
 
-      # RFC 7540, Section 6.3
+      # RFC 9113, Section 6.3
       # "A PRIORITY frame with a length other than 5 octets MUST be
       #  treated as a stream error (Section 5.4.2) of type
       #  FRAME_SIZE_ERROR."
       raise StreamError.new(FRAME_SIZE_ERROR, f.sid, "PRIORITY payload must be 5 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 5
 
-      priority, bytes = extract_priority(f.payload)
+      priority, _bytes = extract_priority(f.payload)
       @priority_tree.add f.sid, priority[:sid], priority[:weight], priority[:exclusive]
     end
 
@@ -871,7 +876,7 @@ yellow "--"
       raise ConnectionError.new(PROTOCOL_ERROR, "SETTINGS must be sent on stream 0, received #{f.sid}") if f.sid != 0
 
       if f.flag? FLAG_ACK
-        # RFC 7540, Section 6.5
+        # RFC 9113, Section 6.5
         # "Receipt of a SETTINGS frame with the ACK flag set and a
         #  length field value other than 0 MUST be treated as a
         #  connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."
@@ -945,12 +950,12 @@ yellow "--"
     end
 
     def handle_rst_stream f
-      # RFC 7540, Section 6.4
+      # RFC 9113, Section 6.4
       # "If a RST_STREAM frame is received with a stream identifier of
       #  0x0, the recipient MUST treat this as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM on stream id #{f.sid}") if f.sid == 0
-      # RFC 7540, Section 5.1
+      # RFC 9113, Section 5.1
       # "Receiving any frame other than HEADERS or PRIORITY on a
       #  stream in this state MUST be treated as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -959,7 +964,7 @@ yellow "--"
       #  the recipient MUST treat this as a connection error (Section
       #  5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM frame on idle stream #{f.sid}") unless @streams[f.sid]
-      # RFC 7540, Section 6.4
+      # RFC 9113, Section 6.4
       # "A RST_STREAM frame with a length other than 4 octets MUST be
       #  treated as a connection error (Section 5.4.1) of type
       #  FRAME_SIZE_ERROR."
@@ -974,13 +979,13 @@ yellow "--"
     def handle_window_update f
       # FIXME: stream states?
 
-      # RFC 7540, Section 5.1
+      # RFC 9113, Section 5.1
       # "Receiving any frame other than HEADERS or PRIORITY on a
       #  stream in this state MUST be treated as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received WINDOW_UPDATE frame on idle stream #{f.sid}") unless f.sid == 0 || @streams[f.sid]
 
-      # RFC 7540, Section 6.9
+      # RFC 9113, Section 6.9
       # "A WINDOW_UPDATE frame with a length other than 4 octets MUST
       #  be treated as a connection error (Section 5.4.1) of type
       #  FRAME_SIZE_ERROR."
@@ -990,12 +995,12 @@ yellow "--"
       #raise 'PROTOCOL_ERROR' if increment & 0x80000000 == 0x80000000
       increment &= 0x7fffffff
 
-      # RFC 7540, Section 6.9
+      # RFC 9113, Section 6.9
       # "A receiver MUST treat the receipt of a WINDOW_UPDATE frame
       #  with an flow-control window increment of 0 as a stream error
       #  (Section 5.4.2) of type PROTOCOL_ERROR"
       #
-      # RFC 7540, Section 6.9.1
+      # RFC 9113, Section 6.9.1
       # "A sender MUST NOT allow a flow-control window to exceed 2^31-1
       #  octets. [etc.]"
       if f.sid != 0
@@ -1019,7 +1024,7 @@ yellow "--"
             until queue.empty?
               f = queue.first
               b = (f.type == FrameTypes::DATA ? f.payload_size : 0)
-              throw :CONNECTION_EXHAUSED if @window_size < b
+              throw :CONNECTION_EXHAUSTED if @window_size < b
               throw :STREAM_EXHAUSTED if s.window_size < b
               queue.shift
               @window_size -= b

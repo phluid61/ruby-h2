@@ -1,4 +1,5 @@
 # encoding: BINARY
+# frozen_string_literal: true
 # vim: ts=2 sts=2 sw=2 expandtab
 
 require_relative 'frame-types'
@@ -32,7 +33,7 @@ module RUBYH2
     # :nodoc:
     def intercept_continuation frame
       if frame.type == CONTINUATION
-        # RFC 7540, Section 6.2 (and others)
+        # RFC 9113, Section 6.2 (and others)
         # "A receiver MUST treat the receipt of any other type of frame
         #  or a frame on a different stream as a connection error
         #  (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -40,7 +41,7 @@ module RUBYH2
         @headers << frame.payload
         maybe_continue frame
       else
-        # RFC 7540, Section 6.2 (and others)
+        # RFC 9113, Section 6.2 (and others)
         # "A receiver MUST treat the receipt of any other type of frame
         #  or a frame on a different stream as a connection error
         #  (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -56,7 +57,7 @@ module RUBYH2
           # TODO: extract padding,priority,...
           maybe_continue frame
         when CONTINUATION
-          # RFC 7540, 6.10
+          # RFC 9113, 6.10
           # "A CONTINUATION frame MUST be preceded by a HEADERS,
           #  PUSH_PROMISE or CONTINUATION frame without the END_HEADERS
           #  flag set. A recipient that observes a violation of this

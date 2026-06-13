@@ -1,6 +1,6 @@
 # Agent Instructions
 
-ruby-h2 is a pure Ruby implementation of the HTTP/2 protocol (RFC 7540),
+ruby-h2 is a pure Ruby implementation of the HTTP/2 protocol (RFC 9113),
 including HPACK header compression (RFC 7541). It has no runtime gem
 dependencies beyond Ruby's standard library (plus `openssl` and `threadpuddle`).
 
@@ -44,7 +44,7 @@ Other important subsystems:
 - Vim modelines (`# vim: ts=2 sts=2 sw=2 expandtab`) appear at the top of
   most files. Preserve them when editing, but do not add them to new files
   unless the surrounding files have them.
-- Indentation is 2 spaces; no tabs in library code. Test files use tabs.
+- Indentation is 2 spaces; no tabs.
 - The project has no Gemfile, gemspec, or Rakefile. Do not introduce a build
   system or package manager configuration unless asked.
 - There are several `# FIXME` and `# TODO` markers in the source. These are
@@ -57,9 +57,11 @@ Tests live in `test/` and use Ruby's built-in `test/unit`. Run them with:
 ```
 ruby test/test_encoding.rb
 ruby test/test_huffman_codes.rb
+ruby test/test_padding.rb
 ```
 
-There is no single command to run all tests. Run each test file individually.
+There is no single command to run all tests. Run each `test/test_*.rb` file
+individually.
 Test helper utilities are in `test/helpers.rb`.
 
 ## Branching model

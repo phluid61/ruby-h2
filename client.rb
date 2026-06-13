@@ -94,7 +94,7 @@ agent.on_response do |sid,r|
   end
 
   if bytes.bytesize > 1023
-    File.open(filename, 'w') {|f| f.write bytes }
+    File.open(filename, 'wb') {|f| f.write bytes }
     puts "> #{bytes.bytesize} bytes written to #{filename.inspect}"
   else
     puts bytes
