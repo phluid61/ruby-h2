@@ -93,7 +93,7 @@ module RUBYH2
         RUBYH2::TableEntry.new(':status', '404'),
         RUBYH2::TableEntry.new(':status', '500'),
         RUBYH2::TableEntry.new('accept-charset', ''),
-        RUBYH2::TableEntry.new('accept-encoding', ''),
+        RUBYH2::TableEntry.new('accept-encoding', 'gzip, deflate'),
         RUBYH2::TableEntry.new('accept-language', ''),
         RUBYH2::TableEntry.new('accept-ranges', ''),
         RUBYH2::TableEntry.new('accept', ''),
