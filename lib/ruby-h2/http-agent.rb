@@ -311,12 +311,14 @@ blue "deliver #{m.inspect}"
       raise unless stream
       raise unless stream.local == :open
 
+      # HEADERS/CONTINUATION are not flow-controlled
+      max_header_size = @max_frame_size
       max_send_size = [@max_frame_size, @window_size, stream.window_size].min
 
       # create headers
       hblock = @hpack.create_block m.headers
       # split header block into chunks and deliver
-      chunks = hblock.scan(/.{1,#{max_send_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
+      chunks = hblock.scan(/.{1,#{max_header_size}}/m).map{|c| {type: FrameTypes::CONTINUATION, flags: 0, bytes: c} }
       if chunks.empty?
         # I cast no judgement here, but shouldn't there be some headers..?
         chunks << {type: FrameTypes::HEADERS, flags: FLAG_END_HEADERS, bytes: String.new.b}
