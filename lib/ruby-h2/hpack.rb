@@ -167,14 +167,14 @@ module RUBYH2
         if first_byte & 0x80 == 0x80
           # indexed header field representation
           accept_resize = false
-          pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 7
+          _pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 7
           raise if index == 0 # FIXME
           name, value = @table_in[index].to_a
           yield name, value
         elsif first_byte & 0xc0 == 0x40
           # literal header field with incremental indexing
           accept_resize = false
-          pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 6
+          _pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 6
           if index == 0
             name, bytes = RUBYH2::HPackEncoding.decode_string bytes
           else
@@ -188,7 +188,7 @@ module RUBYH2
           # RFC 7541, Section 4.2
           # "This dynamic table size update MUST occur at the beginning of the first header block..."
           raise 'dynamic table size update must be at start of header block' unless accept_resize
-          pfx, max_size, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 5
+          _pfx, max_size, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 5
           @table_in.max_size = max_size
         else
           #if first_byte & 0xf0 == 0x10
@@ -197,7 +197,7 @@ module RUBYH2
           # literal header field without indexing
           #end
           accept_resize = false
-          pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 4
+          _pfx, index, bytes = RUBYH2::HPackEncoding.decode_int bytes, prefix_bits: 4
           if index == 0
             name, bytes = RUBYH2::HPackEncoding.decode_string bytes
           else

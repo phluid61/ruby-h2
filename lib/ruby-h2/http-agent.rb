@@ -24,7 +24,7 @@ def flg(f)
     end
     n <<= 1
   end
-  "#{f.to_s 16}[#{a.join '|'}]"
+  "#{s}[#{a.join '|'}]"
 end
 def frm(f)
   t = RUBYH2::FrameTypes.constants.find {|t| f.type == RUBYH2::FrameTypes.const_get(t) }
@@ -868,7 +868,7 @@ yellow "--"
       #  FRAME_SIZE_ERROR."
       raise StreamError.new(FRAME_SIZE_ERROR, f.sid, "PRIORITY payload must be 5 bytes, received #{f.payload.bytesize}") unless f.payload.bytesize == 5
 
-      priority, bytes = extract_priority(f.payload)
+      priority, _bytes = extract_priority(f.payload)
       @priority_tree.add f.sid, priority[:sid], priority[:weight], priority[:exclusive]
     end
 
