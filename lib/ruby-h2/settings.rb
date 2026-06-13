@@ -31,7 +31,7 @@ module RUBYH2
         raise if frame.type != FrameTypes::SETTINGS #FIXME
         hash = {}
         bytes = frame.payload
-        # RFC 7540, Section 6.5
+        # RFC 9113, Section 6.5
         # "A SETTINGS frame with a length other than a multiple of 6
         #  octets MUST be treated as a connection error (Section 5.4.1)
         #  of type FRAME_SIZE_ERROR."

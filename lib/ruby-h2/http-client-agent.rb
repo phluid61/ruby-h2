@@ -64,7 +64,7 @@ module RUBYH2
 
     def handle_push_promise f
       # FIXME
-      # RFC 7540, Section 6.6
+      # RFC 9113, Section 6.6
       # "PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH
       #  setting of the peer endpoint is set to 0. An endpoint that
       #  has set this setting and has received acknowledgement MUST

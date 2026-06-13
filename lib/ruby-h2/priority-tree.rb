@@ -16,6 +16,8 @@ module RUBYH2
       # RFC 7540, Section 5.3.1
       # "A stream cannot depend on itself. An endpoint MUST treat this
       #  as a stream error (Section 5.4.2) of type PROTOCOL_ERROR."
+      # Note: the priority scheme was deprecated by RFC 9113 Section 5.3;
+      # there's probably a FIXME here somewhere
       raise ConnectionError.new(Error::PROTOCOL_ERROR, "stream depends on itself") if parent_id == stream_id or has_parent? stream_id, stream_id
 
       # maybe create parent with default priority

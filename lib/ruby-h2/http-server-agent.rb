@@ -47,7 +47,7 @@ module RUBYH2
       while preface.length < 24
         preface << s.readpartial(24 - preface.length)
       end
-      # RFC7540, Section 3.5
+      # RFC 9113, Section 3.4
       # "Clients and servers MUST treat an invalid connection preface
       #  as a connection error (Section 5.4.1) of type
       #  PROTOCOL_ERROR."
@@ -72,7 +72,7 @@ module RUBYH2
     end
 
     def handle_push_promise f
-      # RFC 7540, Section 8.2
+      # RFC 9113, Section 8.4
       # "A client cannot push. Thus, servers MUST treat the receipt
       #  of a PUSH_PROMISE frame as a connection error (Section
       #  5.4.1) of type PROTOCOL_ERROR."

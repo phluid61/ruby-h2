@@ -1,6 +1,6 @@
 # Agent Instructions
 
-ruby-h2 is a pure Ruby implementation of the HTTP/2 protocol (RFC 7540),
+ruby-h2 is a pure Ruby implementation of the HTTP/2 protocol (RFC 9113),
 including HPACK header compression (RFC 7541). It has no runtime gem
 dependencies beyond Ruby's standard library (plus `openssl` and `threadpuddle`).
 

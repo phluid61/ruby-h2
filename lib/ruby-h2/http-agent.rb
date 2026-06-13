@@ -540,7 +540,7 @@ blue "deliver #{m.inspect}"
         # first frame has to be settings
         # FIXME: make sure this is the actual settings, not the ACK to ours
 
-        # RFC 7540, Section 3.5
+        # RFC 9113, Section 3.4
         # "Clients and servers MUST treat an invalid connection preface
         #  as a connection error (Section 5.4.1) of type
         #  PROTOCOL_ERROR."
@@ -654,17 +654,19 @@ blue "deliver #{m.inspect}"
       # missing mandatory pseudo-headers
       malformed_headers ||= "missing mandatory pseudo-headers #{mandatory_headers.inspect}" unless mandatory_headers.empty?
 
-      # RFC 7540, Section 8.1.2
-      # "A request or response containing uppercase header field
-      #  names MUST be treated as malformed ..."
-      # > S8.1.2.6 "Malformed requests ... MUST be treated as a
-      #    stream error ..."
+      # RFC 9113, Section 8.1.1
+      # "A malformed request or response is one that is an otherwise
+      #  valid sequence of HTTP/2 frames but is invalid due to ...
+      #  the inclusion of uppercase field names ..."
+      # "Malformed requests or responses that are detected MUST be
+      #  treated as a stream error (Section 5.4.2) of type
+      #  PROTOCOL_ERROR."
       raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: #{malformed_headers}") if malformed_headers
 
-      # RFC 7540, Section 8.1.2.6
+      # RFC 9113, Section 8.1.1
       # "A request or response is also malformed if the value of a
       #  content-length header field does not equal the sum of the DATA
-      #  frame payload lengths that form the body."
+      #  frame payload lengths that form the content."
       cl = headers['content-length']
       raise StreamError.new(PROTOCOL_ERROR, sid, "malformed message: content-length #{cl.inspect}, expected #{stream.body.bytesize}") if cl and (Integer(cl) rescue -1) != stream.body.bytesize
 
@@ -680,7 +682,7 @@ blue "deliver #{m.inspect}"
       ints = bytes.bytes
       pad_length = ints.shift
       rst_length = ints.length
-      # e.g. RFC 7540, Section 6.1
+      # e.g. RFC 9113, Section 6.1
       # "If the length of the padding is the length of the frame
       #  payload or greater, the recipient MUST treat this as a
       #  connection error (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -696,7 +698,7 @@ blue "deliver #{m.inspect}"
     end
 
     def handle_data f
-      # RFC 7540, Section 6.1
+      # RFC 9113, Section 6.1
       # "If a DATA frame is received whose stream identifier field is
       #  0x0, the recipient MUST respond with a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -852,13 +854,13 @@ yellow "--"
     end
 
     def handle_priority f
-      # RFC 7540, Section 6.3
+      # RFC 9113, Section 6.3
       # "If a PRIORITY frame is received with a stream identifier of
       #  0x0, the recipient MUST respond with a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "PRIORITY must be sent on stream >0") if f.sid == 0
 
-      # RFC 7540, Section 6.3
+      # RFC 9113, Section 6.3
       # "A PRIORITY frame with a length other than 5 octets MUST be
       #  treated as a stream error (Section 5.4.2) of type
       #  FRAME_SIZE_ERROR."
@@ -872,7 +874,7 @@ yellow "--"
       raise ConnectionError.new(PROTOCOL_ERROR, "SETTINGS must be sent on stream 0, received #{f.sid}") if f.sid != 0
 
       if f.flag? FLAG_ACK
-        # RFC 7540, Section 6.5
+        # RFC 9113, Section 6.5
         # "Receipt of a SETTINGS frame with the ACK flag set and a
         #  length field value other than 0 MUST be treated as a
         #  connection error (Section 5.4.1) of type FRAME_SIZE_ERROR."
@@ -946,12 +948,12 @@ yellow "--"
     end
 
     def handle_rst_stream f
-      # RFC 7540, Section 6.4
+      # RFC 9113, Section 6.4
       # "If a RST_STREAM frame is received with a stream identifier of
       #  0x0, the recipient MUST treat this as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM on stream id #{f.sid}") if f.sid == 0
-      # RFC 7540, Section 5.1
+      # RFC 9113, Section 5.1
       # "Receiving any frame other than HEADERS or PRIORITY on a
       #  stream in this state MUST be treated as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
@@ -960,7 +962,7 @@ yellow "--"
       #  the recipient MUST treat this as a connection error (Section
       #  5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received RST_STREAM frame on idle stream #{f.sid}") unless @streams[f.sid]
-      # RFC 7540, Section 6.4
+      # RFC 9113, Section 6.4
       # "A RST_STREAM frame with a length other than 4 octets MUST be
       #  treated as a connection error (Section 5.4.1) of type
       #  FRAME_SIZE_ERROR."
@@ -975,13 +977,13 @@ yellow "--"
     def handle_window_update f
       # FIXME: stream states?
 
-      # RFC 7540, Section 5.1
+      # RFC 9113, Section 5.1
       # "Receiving any frame other than HEADERS or PRIORITY on a
       #  stream in this state MUST be treated as a connection error
       #  (Section 5.4.1) of type PROTOCOL_ERROR."
       raise ConnectionError.new(PROTOCOL_ERROR, "received WINDOW_UPDATE frame on idle stream #{f.sid}") unless f.sid == 0 || @streams[f.sid]
 
-      # RFC 7540, Section 6.9
+      # RFC 9113, Section 6.9
       # "A WINDOW_UPDATE frame with a length other than 4 octets MUST
       #  be treated as a connection error (Section 5.4.1) of type
       #  FRAME_SIZE_ERROR."
@@ -991,12 +993,12 @@ yellow "--"
       #raise 'PROTOCOL_ERROR' if increment & 0x80000000 == 0x80000000
       increment &= 0x7fffffff
 
-      # RFC 7540, Section 6.9
+      # RFC 9113, Section 6.9
       # "A receiver MUST treat the receipt of a WINDOW_UPDATE frame
       #  with an flow-control window increment of 0 as a stream error
       #  (Section 5.4.2) of type PROTOCOL_ERROR"
       #
-      # RFC 7540, Section 6.9.1
+      # RFC 9113, Section 6.9.1
       # "A sender MUST NOT allow a flow-control window to exceed 2^31-1
       #  octets. [etc.]"
       if f.sid != 0
