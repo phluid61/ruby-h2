@@ -262,7 +262,7 @@ red "read #{hex bytes}"
       s = if @streams.empty?
         1
       else
-        t = @streams.keys.last
+        t = @streams.keys.max
         t + 1 + (t % 2)
       end
 
@@ -274,7 +274,7 @@ red "read #{hex bytes}"
       s = if @streams.empty?
         2
       else
-        t = @streams.keys.last
+        t = @streams.keys.max
         t + 2 - (t % 2)
       end
 
