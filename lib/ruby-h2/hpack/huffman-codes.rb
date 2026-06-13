@@ -110,7 +110,7 @@ module RUBYH2
     end
 
     def decode str
-      return '' if str.bytesize == 0
+      return ''.b if str.bytesize == 0
       bytes = str.unpack('C*')
       str = []
       tc = @decodes

@@ -34,7 +34,7 @@ module RUBYH2
       if i < prefix_mask
         [prefix | i].pack('C')
       else
-        bytes = ''
+        bytes = ''.b
         bytes << [prefix | prefix_mask].pack('C')
         i -= prefix_mask
         while i >= 0x80
@@ -99,7 +99,7 @@ module RUBYH2
       raise ArgumentError if bytes.empty?
       prefix, length, bytes = self.decode_int bytes, prefix_bits: 7
       raise ArgumentError if bytes.bytesize < length
-      string = ''
+      string = ''.b
       if length > 0
         string = bytes.byteslice(0, length)
         bytes = bytes.byteslice(length..-1)
