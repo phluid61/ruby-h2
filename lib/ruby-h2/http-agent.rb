@@ -552,13 +552,12 @@ blue "deliver #{m.inspect}"
 
       if @goaway
         case f.type
-        when FrameTypes::DATA
-        when FrameTypes::HEADERS
-        when FrameTypes::PUSH_PROMISE
-        when FrameTypes::CONTINUATION
-        when FrameTypes::GZIPPED_DATA
-        when FrameTypes::DROPPED_FRAME
-        else
+        when FrameTypes::DATA,
+             FrameTypes::HEADERS,
+             FrameTypes::PUSH_PROMISE,
+             FrameTypes::CONTINUATION,
+             FrameTypes::GZIPPED_DATA,
+             FrameTypes::DROPPED_FRAME
           # FIXME
           @logger.warn "Ignoring frame 0x#{f.type.to_s 16} after GOAWAY"
           return
