@@ -1,4 +1,5 @@
 # encoding: BINARY
+# frozen_string_literal: true
 # vim: ts=2 sts=2 sw=2 expandtab
 
 def hex(s) s.nil? ? 'nil' : "[#{s.bytesize}]:#{s.bytes.map{|b|'%02X' % b}.join '.'}" end
